@@ -16,6 +16,21 @@ const TIERS = [
   { color: '#FF3B30', label: 'Low' },
 ];
 const APPS = ['Hinge', 'Bumble', 'Tinder', 'Facebook Dating', 'Match', 'Coffee Meets Bagel', 'The League', 'Other'];
+
+// Deep link to open a dating app so you can paste your reply and send (compliant —
+// we never message on your behalf, just open the app for you).
+function appLink(app) {
+  const m = {
+    'Hinge': 'https://hinge.co/',
+    'Bumble': 'https://bumble.com/app',
+    'Tinder': 'https://tinder.com/app/recs',
+    'Facebook Dating': 'https://www.facebook.com/dating',
+    'Match': 'https://www.match.com',
+    'Coffee Meets Bagel': 'https://coffeemeetsbagel.com',
+    'The League': 'https://www.theleague.com',
+  };
+  return m[app] || '';
+}
 const STATUSES = [
   { key: 'new', label: 'New', color: '#0A84FF' },
   { key: 'talking', label: 'Talking', color: '#5E5CE6' },
@@ -128,6 +143,7 @@ function blankPerson(name) {
     name: name || '',
     app: '',
     tier: 1,
+    myRank: '',
     status: 'new',
     nextStep: '',
     contact: '',
@@ -400,6 +416,7 @@ export default function ProspectTracker() {
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState('');
   const [filterTier, setFilterTier] = useState(null); // null = all, 0/1/2
+  const [sortBy, setSortBy] = useState('tier'); // default: my interest tier
   const [isPro, setIsPro] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   const [howto, setHowto] = useState(null);
@@ -462,6 +479,7 @@ export default function ProspectTracker() {
         if (p.contact === undefined) p.contact = '';
         if (!p.dates) p.dates = [];
         if (!p.details) p.details = [];
+        if (p.myRank === undefined) p.myRank = '';
         // one-time cleanup: the original seed-Nicky shipped with placeholder photos
         // that were not actually her. Remove them from the stored copy, once.
         if (p.id === 'seed-nicky' && !p._photoFix) {
@@ -583,14 +601,51 @@ export default function ProspectTracker() {
   const visible = people.filter(p => {
     if (filterTier !== null && p.tier !== filterTier) return false;
     if (!q) return true;
-    const hay = (p.name + ' ' + p.app + ' ' + (p.facts.livesIn || '') + ' ' + (p.facts.hometown || '') + ' ' + p.profileNotes + ' ' + p.myNotes).toLowerCase();
+    const hay = (p.name + ' ' + p.app + ' ' + (p.facts.livesIn || '') + ' ' + (p.facts.hometown || '') + ' ' + (p.facts.religion || '') + ' ' + (p.facts.kids || '') + ' ' + p.profileNotes + ' ' + p.myNotes).toLowerCase();
     return hay.includes(q);
-  }).map((p, i) => ({ p, i })) // keep original index for stable ordering within a tier
+  }).map((p, i) => ({ p, i }))
     .sort((a, b) => {
-      const ta = a.p.tier == null ? 1 : a.p.tier;
-      const tb = b.p.tier == null ? 1 : b.p.tier;
-      if (ta !== tb) return ta - tb;      // High(0) → Medium(1) → Low(2)
-      return a.i - b.i;                    // keep your manual order within a tier
+      const A = a.p, B = b.p;
+      const num = (v) => { const n = parseInt(v, 10); return isNaN(n) ? null : n; };
+      const aiScore = (x) => (x.compat && x.compat.score != null) ? x.compat.score : -1;
+      const driveMin = (x) => {
+        const t = x.drive && (x.drive.longTime || x.drive.shortTime);
+        const n = t ? parseInt(String(t).replace(/[^0-9]/g, ''), 10) : NaN;
+        return isNaN(n) ? 99999 : n;
+      };
+      switch (sortBy) {
+        case 'ai': return aiScore(B) - aiScore(A);
+        case 'age': {
+          const aa = num(A.facts.age), ba = num(B.facts.age);
+          if (aa == null && ba == null) break;
+          if (aa == null) return 1; if (ba == null) return -1;
+          return aa - ba;
+        }
+        case 'distance': return driveMin(A) - driveMin(B);
+        case 'first': {
+          const f = (x) => (x.facts.firstMove || '').toLowerCase().includes('her') ? 0 : 1;
+          if (f(A) !== f(B)) return f(A) - f(B);
+          break;
+        }
+        case 'kids': {
+          const k = (x) => (x.facts.kids || '').trim() ? 0 : 1;
+          if (k(A) !== k(B)) return k(A) - k(B);
+          break;
+        }
+        case 'religion': return (A.facts.religion || '~').localeCompare(B.facts.religion || '~');
+        case 'myrank': {
+          const r = (x) => (x.myRank != null && x.myRank !== '') ? parseInt(x.myRank, 10) : 99999;
+          if (r(A) !== r(B)) return r(A) - r(B);
+          break;
+        }
+        case 'tier':
+        default: break;
+      }
+      // fallback: your interest tier, then manual order
+      const ta = A.tier == null ? 1 : A.tier;
+      const tb = B.tier == null ? 1 : B.tier;
+      if (ta !== tb) return ta - tb;
+      return a.i - b.i;
     }).map(x => x.p);
   const counts = [0, 1, 2].map(t => people.filter(p => p.tier === t).length);
   const needAction = people.filter(p => p.nextStep && p.nextStep.trim()).length;
@@ -632,8 +687,21 @@ export default function ProspectTracker() {
       {people.length > 0 && (
         <>
           <div style={S.searchWrap}>
-            <input style={S.search} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search name, city, notes…" />
+            <input style={S.search} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search name, city, kids, religion, notes…" />
             {query ? <button style={S.searchClear} onClick={() => setQuery('')}>×</button> : null}
+          </div>
+          <div style={S.sortRow}>
+            <span style={S.sortLabel}>Sort:</span>
+            <select style={S.sortSelect} value={sortBy} onChange={e => setSortBy(e.target.value)}>
+              <option value="tier">My interest (High→Low)</option>
+              <option value="myrank">My rank (1st, 2nd…)</option>
+              <option value="ai">AI match score</option>
+              <option value="age">Age</option>
+              <option value="distance">Distance from me</option>
+              <option value="first">Who reached out first</option>
+              <option value="kids">Has kids</option>
+              <option value="religion">Religion</option>
+            </select>
           </div>
           <div style={S.filterRow}>
             <button style={{ ...S.filterChip, ...(filterTier === null ? S.filterChipOn : {}) }} onClick={() => setFilterTier(null)}>All</button>
@@ -668,6 +736,7 @@ export default function ProspectTracker() {
               ) : null}
               <div style={S.rowMid}>
                 <div style={S.rowName}>
+                  {(p.myRank != null && p.myRank !== '') ? <span style={S.myRankBadge}>#{p.myRank}</span> : null}
                   <span style={{ color: tier.color }}>{p.name || 'Untitled'}</span>
                   {p.facts.age ? <span style={{ ...S.rowAge, color: tier.color }}> · {p.facts.age}</span> : null}
                   <span style={{ ...S.tierBadge, background: tier.color }}>{tier.label}</span>
@@ -1023,7 +1092,16 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
       <div style={S.detailBody}>
         {/* photos first */}
         <div style={S.photoStrip}>
-          {p.photos.map((src, i) => <img key={i} src={src} style={S.stripImg} alt="" onClick={() => setViewer(i)} />)}
+          {p.photos.map((src, i) => (
+            <div key={i} style={S.stripItem}>
+              <img src={src} style={S.stripImg} alt="" onClick={() => setViewer(i)} />
+              <button style={S.stripDel} onClick={(e) => {
+                e.stopPropagation();
+                const next = p.photos.slice(); next.splice(i, 1);
+                onUpdate(p.id, { photos: next });
+              }}>×</button>
+            </div>
+          ))}
           <button style={S.stripAdd} onClick={() => fileRef.current && fileRef.current.click()}>+</button>
           <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
             onChange={e => { addPhotos(e.target.files); e.target.value = ''; }} />
@@ -1199,6 +1277,12 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
           ))}
         </div>
 
+        {/* my manual rank */}
+        <div style={S.fieldLabel}>My rank (1 = top pick)</div>
+        <input style={S.input} type="number" min="1" value={p.myRank || ''} placeholder="e.g. 1"
+          onChange={e => onUpdate(p.id, { myRank: e.target.value })} />
+        <div style={{ height: 14 }} />
+
         {/* status */}
         <div style={S.fieldLabel}>Status</div>
         <div style={S.statusRow}>
@@ -1323,6 +1407,11 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
                 <div style={S.ideaChat} onClick={() => { try { navigator.clipboard.writeText(coachOut[k]); } catch (e) {} }}>{coachOut[k]}<span style={S.ideaCopy}>copy</span></div>
               </div>
             ) : null)}
+            {appLink(p.app) ? (
+              <a href={appLink(p.app)} target="_blank" rel="noopener noreferrer" style={S.openAppBtn}>
+                Copy a reply, then open {p.app} to send →
+              </a>
+            ) : null}
           </div>
         )}
 
@@ -1717,6 +1806,7 @@ const S = {
   heroBlockTitle: { fontSize: 13, fontWeight: 800, color: '#fff', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 },
   heroLoading: { fontSize: 13, color: '#8e8e93', padding: '4px 0' },
   sayCard: { position: 'relative', background: '#1c1c1e', borderRadius: 12, padding: '11px 60px 11px 13px', fontSize: 14.5, marginBottom: 7, cursor: 'pointer', lineHeight: 1.4 },
+  openAppBtn: { display: 'block', textAlign: 'center', textDecoration: 'none', background: '#0A84FF', color: '#fff', borderRadius: 11, padding: '12px', fontSize: 14, fontWeight: 700, marginTop: 8 },
   sayCopy: { position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: '#0A84FF', fontWeight: 800, textTransform: 'uppercase' },
   lockRow: { fontSize: 12.5, color: '#FFD700', fontWeight: 700, padding: '9px 12px', background: 'rgba(255,215,0,0.08)', borderRadius: 10, cursor: 'pointer', marginTop: 4 },
   unfoldBtn: { width: '100%', background: 'rgba(255,255,255,0.06)', border: 'none', color: '#c7c5ff', borderRadius: 11, padding: '12px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', marginTop: 14 },
@@ -1742,6 +1832,7 @@ const S = {
   doItem: { fontSize: 13.5, color: '#d7f5e0', marginBottom: 4, lineHeight: 1.4 },
   dontItem: { fontSize: 13.5, color: '#ffd3d0', marginBottom: 4, lineHeight: 1.4 },
   tierBadge: { fontSize: 10, fontWeight: 800, color: '#000', borderRadius: 5, padding: '1px 6px', marginLeft: 7, textTransform: 'uppercase', letterSpacing: 0.3, verticalAlign: 'middle' },
+  myRankBadge: { fontSize: 12, fontWeight: 800, color: '#fff', background: '#3a3a3c', borderRadius: 6, padding: '1px 7px', marginRight: 6 },
   matchBadge: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 46, height: 46, borderRadius: 12, border: '2px solid', background: '#0e0e10', flexShrink: 0, cursor: 'pointer', marginRight: 2 },
   matchEmoji: { fontSize: 16, lineHeight: 1 },
   matchNum: { fontSize: 12, fontWeight: 800, lineHeight: 1.1 },
@@ -1812,6 +1903,9 @@ const S = {
   statChip: { fontSize: 13, color: '#c7c7cc', background: '#1c1c1e', borderRadius: 9, padding: '6px 10px', fontWeight: 600 },
 
   searchWrap: { position: 'relative', padding: '0 16px 10px' },
+  sortRow: { display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px 10px' },
+  sortLabel: { fontSize: 13, color: '#8e8e93', fontWeight: 600 },
+  sortSelect: { flex: 1, background: '#1c1c1e', color: '#fff', border: '1px solid #2c2c2e', borderRadius: 10, padding: '9px 10px', fontSize: 14, fontFamily: 'inherit', outline: 'none' },
   search: { width: '100%', boxSizing: 'border-box', background: '#1c1c1e', border: 'none', color: '#fff', borderRadius: 11, padding: '11px 34px 11px 14px', fontSize: 15, fontFamily: 'inherit', outline: 'none' },
   searchClear: { position: 'absolute', right: 26, top: 8, background: '#3a3a3c', border: 'none', color: '#fff', width: 24, height: 24, borderRadius: 12, fontSize: 15, cursor: 'pointer' },
   filterRow: { display: 'flex', gap: 8, padding: '0 16px 14px' },
@@ -1882,6 +1976,8 @@ const S = {
 
   photoStrip: { display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 6, marginBottom: 12 },
   stripImg: { width: 72, height: 72, objectFit: 'cover', borderRadius: 12, flexShrink: 0, cursor: 'pointer' },
+  stripItem: { position: 'relative', flexShrink: 0 },
+  stripDel: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, background: '#FF3B30', color: '#fff', border: '2px solid #000', fontSize: 13, lineHeight: '18px', cursor: 'pointer', padding: 0 },
   stripAdd: { width: 72, height: 72, borderRadius: 12, border: '2px dashed #3a3a3c', background: '#1c1c1e', color: '#0A84FF', fontSize: 28, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' },
   hint: { fontSize: 13, color: '#8e8e93', marginBottom: 22, lineHeight: 1.4 },
 
