@@ -488,6 +488,22 @@ export default function ProspectTracker() {
         }
       });
 
+      // Ensure everyone has a clean, unique rank number (1,2,3…). If ranks are
+      // missing or duplicated, renumber by current order so the arrows work perfectly.
+      const ranks = list.map(p => (p.myRank != null && p.myRank !== '') ? parseInt(p.myRank, 10) : null);
+      const hasBlank = ranks.some(r => r == null);
+      const hasDup = new Set(ranks.filter(r => r != null)).size !== ranks.filter(r => r != null).length;
+      if (hasBlank || hasDup) {
+        const ordered = list.slice().sort((a, b) => {
+          const ra = (a.myRank != null && a.myRank !== '') ? parseInt(a.myRank, 10) : 99999;
+          const rb = (b.myRank != null && b.myRank !== '') ? parseInt(b.myRank, 10) : 99999;
+          return ra - rb;
+        });
+        const rankMap = {};
+        ordered.forEach((p, idx) => { rankMap[p.id] = idx + 1; });
+        list = list.map(p => ({ ...p, myRank: String(rankMap[p.id]) }));
+      }
+
       setPeople(list);
       setLoaded(true);
       // write everything back through both channels so they re-converge
@@ -654,7 +670,7 @@ export default function ProspectTracker() {
         case 'myrank': {
           const r = (x) => (x.myRank != null && x.myRank !== '') ? parseInt(x.myRank, 10) : 99999;
           if (r(A) !== r(B)) return r(A) - r(B);
-          break;
+          return a.i - b.i; // same tiebreak as the move() function
         }
         case 'tier':
         default: break;
@@ -671,7 +687,7 @@ export default function ProspectTracker() {
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v3</span></div>
+        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v4</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowWrapped(true)}>📊 Wrapped</button>}
@@ -2025,5 +2041,4 @@ const S = {
   viewerPrev: { position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.18)', color: '#fff', border: 'none', borderRadius: 22, width: 44, height: 44, fontSize: 26, cursor: 'pointer' },
   viewerNext: { position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.18)', color: '#fff', border: 'none', borderRadius: 22, width: 44, height: 44, fontSize: 26, cursor: 'pointer' },
 };
-
 
