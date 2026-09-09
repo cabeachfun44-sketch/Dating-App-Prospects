@@ -144,6 +144,9 @@ function blankPerson(name) {
     app: '',
     tier: 1,
     myRank: '',
+    bucket: 'active',        // active | hold | deleted
+    followUpDate: '',        // when to reconnect (YYYY-MM-DD)
+    followUpNote: '',        // what to say / ask when you reconnect
     status: 'new',
     nextStep: '',
     contact: '',
@@ -416,6 +419,7 @@ export default function ProspectTracker() {
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState('');
   const [filterTier, setFilterTier] = useState(null); // null = all, 0/1/2
+  const [view, setView] = useState('active'); // active | hold | followups | deleted
   const [sortBy, setSortBy] = useState('myrank'); // default: my manual rank (#1, #2…)
   const [isPro, setIsPro] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
@@ -480,6 +484,9 @@ export default function ProspectTracker() {
         if (!p.dates) p.dates = [];
         if (!p.details) p.details = [];
         if (p.myRank === undefined) p.myRank = '';
+        if (p.bucket === undefined) p.bucket = 'active';
+        if (p.followUpDate === undefined) p.followUpDate = '';
+        if (p.followUpNote === undefined) p.followUpNote = '';
         // one-time cleanup: the original seed-Nicky shipped with placeholder photos
         // that were not actually her. Remove them from the stored copy, once.
         if (p.id === 'seed-nicky' && !p._photoFix) {
@@ -488,21 +495,8 @@ export default function ProspectTracker() {
         }
       });
 
-      // Ensure everyone has a clean, unique rank number (1,2,3…). If ranks are
-      // missing or duplicated, renumber by current order so the arrows work perfectly.
-      const ranks = list.map(p => (p.myRank != null && p.myRank !== '') ? parseInt(p.myRank, 10) : null);
-      const hasBlank = ranks.some(r => r == null);
-      const hasDup = new Set(ranks.filter(r => r != null)).size !== ranks.filter(r => r != null).length;
-      if (hasBlank || hasDup) {
-        const ordered = list.slice().sort((a, b) => {
-          const ra = (a.myRank != null && a.myRank !== '') ? parseInt(a.myRank, 10) : 99999;
-          const rb = (b.myRank != null && b.myRank !== '') ? parseInt(b.myRank, 10) : 99999;
-          return ra - rb;
-        });
-        const rankMap = {};
-        ordered.forEach((p, idx) => { rankMap[p.id] = idx + 1; });
-        list = list.map(p => ({ ...p, myRank: String(rankMap[p.id]) }));
-      }
+      // Rank = position in the list. Make sure the numbers match the order.
+      list = list.map((p, idx) => ({ ...p, myRank: String(idx + 1) }));
 
       setPeople(list);
       setLoaded(true);
@@ -564,26 +558,19 @@ export default function ProspectTracker() {
 
   const move = useCallback((id, dir) => {
     setPeople(prev => {
-      // Build the list in the order currently shown (by rank, blanks last, stable)
-      const shown = prev.map((p, idx) => ({ p, idx })).sort((a, b) => {
-        const ra = (a.p.myRank != null && a.p.myRank !== '') ? parseInt(a.p.myRank, 10) : 99999;
-        const rb = (b.p.myRank != null && b.p.myRank !== '') ? parseInt(b.p.myRank, 10) : 99999;
-        if (ra !== rb) return ra - rb;
-        return a.idx - b.idx;
-      }).map(x => x.p);
-      const i = shown.findIndex(p => p.id === id);
+      const i = prev.findIndex(p => p.id === id);
+      if (i < 0) return prev;
       const j = i + dir;
-      if (i < 0 || j < 0 || j >= shown.length) return prev;
-      // swap the two neighbors
-      [shown[i], shown[j]] = [shown[j], shown[i]];
-      // renumber the whole list 1,2,3… in the new visible order
-      const rankMap = {};
-      shown.forEach((p, idx) => { rankMap[p.id] = idx + 1; });
-      const next = prev.map(p => ({ ...p, myRank: String(rankMap[p.id]) }));
-      sset(INDEX_KEY, next.map(p => p.id));
-      sset(MIRROR_KEY, next);
-      next.forEach(p => sset(personKey(p.id), p));
-      return next;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = prev.slice();
+      const [moved] = next.splice(i, 1);   // remove the person
+      next.splice(j, 0, moved);            // insert at new spot
+      // keep myRank in step with position so the number shown matches
+      const renum = next.map((p, idx) => ({ ...p, myRank: String(idx + 1) }));
+      sset(INDEX_KEY, renum.map(p => p.id));
+      sset(MIRROR_KEY, renum);
+      renum.forEach(p => sset(personKey(p.id), p));
+      return renum;
     });
   }, []);
 
@@ -632,10 +619,22 @@ export default function ProspectTracker() {
 
   // ---- LIST VIEW ----
   const q = query.trim().toLowerCase();
+  const todayStr = new Date().toISOString().slice(0, 10);
   const visible = people.filter(p => {
+    const bucket = p.bucket || 'active';
+    // which section are we looking at?
+    if (view === 'active' && bucket !== 'active') return false;
+    if (view === 'hold' && bucket !== 'hold') return false;
+    if (view === 'deleted' && bucket !== 'deleted') return false;
+    if (view === 'followups') {
+      // show anyone (active or hold) who has a follow-up date that's due
+      if (bucket === 'deleted') return false;
+      if (!p.followUpDate) return false;
+      if (p.followUpDate > todayStr) return false;
+    }
     if (filterTier !== null && p.tier !== filterTier) return false;
     if (!q) return true;
-    const hay = (p.name + ' ' + p.app + ' ' + (p.facts.livesIn || '') + ' ' + (p.facts.hometown || '') + ' ' + (p.facts.religion || '') + ' ' + (p.facts.kids || '') + ' ' + p.profileNotes + ' ' + p.myNotes).toLowerCase();
+    const hay = (p.name + ' ' + p.app + ' ' + (p.facts.livesIn || '') + ' ' + (p.facts.hometown || '') + ' ' + (p.facts.religion || '') + ' ' + (p.facts.kids || '') + ' ' + p.profileNotes + ' ' + p.myNotes + ' ' + (p.followUpNote || '')).toLowerCase();
     return hay.includes(q);
   }).map((p, i) => ({ p, i }))
     .sort((a, b) => {
@@ -668,9 +667,7 @@ export default function ProspectTracker() {
         }
         case 'religion': return (A.facts.religion || '~').localeCompare(B.facts.religion || '~');
         case 'myrank': {
-          const r = (x) => (x.myRank != null && x.myRank !== '') ? parseInt(x.myRank, 10) : 99999;
-          if (r(A) !== r(B)) return r(A) - r(B);
-          return a.i - b.i; // same tiebreak as the move() function
+          return a.i - b.i; // follow the stored order exactly (arrows reorder the array)
         }
         case 'tier':
         default: break;
@@ -681,13 +678,16 @@ export default function ProspectTracker() {
       if (ta !== tb) return ta - tb;
       return a.i - b.i;
     }).map(x => x.p);
-  const counts = [0, 1, 2].map(t => people.filter(p => p.tier === t).length);
-  const needAction = people.filter(p => p.nextStep && p.nextStep.trim()).length;
+  const counts = [0, 1, 2].map(t => people.filter(p => p.tier === t && (p.bucket || 'active') === 'active').length);
+  const needAction = people.filter(p => p.nextStep && p.nextStep.trim() && (p.bucket || 'active') === 'active').length;
+  const holdCount = people.filter(p => (p.bucket || 'active') === 'hold').length;
+  const deletedCount = people.filter(p => (p.bucket || 'active') === 'deleted').length;
+  const followUpCount = people.filter(p => (p.bucket || 'active') !== 'deleted' && p.followUpDate && p.followUpDate <= todayStr).length;
 
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v4</span></div>
+        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v6</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowWrapped(true)}>📊 Wrapped</button>}
@@ -710,6 +710,15 @@ export default function ProspectTracker() {
       )}
 
       {people.length > 0 && (
+        <div style={S.viewTabs}>
+          <button style={{ ...S.viewTab, ...(view === 'active' ? S.viewTabOn : {}) }} onClick={() => setView('active')}>Active</button>
+          <button style={{ ...S.viewTab, ...(view === 'followups' ? S.viewTabOn : {}) }} onClick={() => setView('followups')}>Follow-ups{followUpCount > 0 ? ' (' + followUpCount + ')' : ''}</button>
+          <button style={{ ...S.viewTab, ...(view === 'hold' ? S.viewTabOn : {}) }} onClick={() => setView('hold')}>On Hold{holdCount > 0 ? ' (' + holdCount + ')' : ''}</button>
+          <button style={{ ...S.viewTab, ...(view === 'deleted' ? S.viewTabOn : {}) }} onClick={() => setView('deleted')}>Deleted{deletedCount > 0 ? ' (' + deletedCount + ')' : ''}</button>
+        </div>
+      )}
+
+      {people.length > 0 && view === 'active' && (
         <div style={S.statsRow}>
           <div style={S.statChip}><span style={{ color: TIERS[0].color }}>●</span> {counts[0]} high</div>
           <div style={S.statChip}><span style={{ color: TIERS[1].color }}>●</span> {counts[1]} med</div>
@@ -748,7 +757,13 @@ export default function ProspectTracker() {
 
       <div style={S.list}>
         {visible.length === 0 && (
-          <div style={S.emptyState}>{people.length === 0 ? 'No prospects yet. Tap below to add your first.' : 'None match.'}</div>
+          <div style={S.emptyState}>{
+            people.length === 0 ? 'No prospects yet. Tap below to add your first.' :
+            view === 'hold' ? 'Nobody on hold. Open a prospect and set them to "On Hold" to park them here.' :
+            view === 'deleted' ? 'Nobody in the deleted list. Deleted prospects stay here so you remember not to revisit them.' :
+            view === 'followups' ? 'No follow-ups due. Set a follow-up date on a prospect to be reminded to reconnect.' :
+            'None match.'
+          }</div>
         )}
         {visible.map((p, visIdx) => {
           const tier = TIERS[p.tier] || TIERS[1];
@@ -779,6 +794,7 @@ export default function ProspectTracker() {
                   {p.facts.livesIn ? ' · ' + p.facts.livesIn : ''}
                 </div>
                 {p.nextStep && p.nextStep.trim() ? <div style={S.nextStepLine}>⏱ {p.nextStep}</div> : null}
+                {p.followUpDate ? <div style={S.followUpLine}>🔔 {p.followUpDate}{p.followUpNote ? ' — ' + p.followUpNote : ''}</div> : null}
               </div>
               <div style={S.rowArrows} onClick={e => e.stopPropagation()}>
                 <button style={S.arrowBtn} onClick={() => { setSortBy('myrank'); move(p.id, -1); }}>▲</button>
@@ -1118,7 +1134,7 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
       <div style={S.navBar}>
         <button style={S.navBtn} onClick={onBack}>‹ List</button>
         <div style={S.navTitle}>{p.name || 'Prospect'}</div>
-        <button style={confirmDel ? S.navDeleteArmed : S.navDelete} onClick={() => { if (confirmDel) { onRemove(p.id); } else { setConfirmDel(true); setTimeout(() => setConfirmDel(false), 3000); } }}>{confirmDel ? 'Tap to confirm' : 'Delete'}</button>
+        <button style={confirmDel ? S.navDeleteArmed : S.navDelete} onClick={() => { if (confirmDel) { onUpdate(p.id, { bucket: 'deleted' }); onBack(); } else { setConfirmDel(true); setTimeout(() => setConfirmDel(false), 3000); } }}>{confirmDel ? 'Move to Deleted' : 'Delete'}</button>
       </div>
 
       <div style={S.detailBody}>
@@ -1313,6 +1329,29 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         <div style={S.fieldLabel}>My rank (1 = top pick)</div>
         <input style={S.input} type="number" min="1" value={p.myRank || ''} placeholder="e.g. 1"
           onChange={e => onUpdate(p.id, { myRank: e.target.value })} />
+        <div style={{ height: 14 }} />
+
+        {/* bucket: where does this person live? */}
+        <div style={S.fieldLabel}>List</div>
+        <div style={S.tierRow}>
+          {[['active', 'Active'], ['hold', 'On Hold'], ['deleted', 'Deleted']].map(([key, label]) => (
+            <button key={key} onClick={() => onUpdate(p.id, { bucket: key })}
+              style={{ ...S.appChip, background: (p.bucket || 'active') === key ? '#0A84FF' : '#1c1c1e', color: (p.bucket || 'active') === key ? '#fff' : '#8e8e93' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <div style={{ height: 14 }} />
+
+        {/* follow-up reminder — the CRM piece */}
+        <div style={S.fieldLabel}>🔔 Reconnect on (date)</div>
+        <input style={S.input} type="date" value={p.followUpDate || ''}
+          onChange={e => onUpdate(p.id, { followUpDate: e.target.value })} />
+        <div style={{ height: 10 }} />
+        <div style={S.fieldLabel}>What to say / ask when you reconnect</div>
+        <textarea style={S.textarea} value={p.followUpNote || ''}
+          placeholder="e.g. Ask how her son's kindergarten start went; her mom visits from Iran every 6 months — ask about family back home."
+          onChange={e => onUpdate(p.id, { followUpNote: e.target.value })} />
         <div style={{ height: 14 }} />
 
         {/* status */}
@@ -1932,6 +1971,9 @@ const S = {
   count: { fontSize: 15, color: '#8e8e93', fontWeight: 600 },
 
   statsRow: { display: 'flex', gap: 8, padding: '0 16px 12px', flexWrap: 'wrap' },
+  viewTabs: { display: 'flex', gap: 6, padding: '0 16px 12px', flexWrap: 'wrap' },
+  viewTab: { background: '#1c1c1e', color: '#8e8e93', border: '1px solid #2c2c2e', borderRadius: 9, padding: '7px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+  viewTabOn: { background: '#0A84FF', color: '#fff', borderColor: '#0A84FF' },
   statChip: { fontSize: 13, color: '#c7c7cc', background: '#1c1c1e', borderRadius: 9, padding: '6px 10px', fontWeight: 600 },
 
   searchWrap: { position: 'relative', padding: '0 16px 10px' },
@@ -1947,6 +1989,7 @@ const S = {
 
   statusPill: { fontSize: 11, fontWeight: 700, color: '#fff', borderRadius: 6, padding: '1px 6px', marginRight: 2 },
   nextStepLine: { fontSize: 12.5, color: '#FF9F0A', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  followUpLine: { fontSize: 12.5, color: '#5E5CE6', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
 
   statusRow: { display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' },
   statusChip: { border: 'none', borderRadius: 9, padding: '8px 11px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
@@ -2041,4 +2084,3 @@ const S = {
   viewerPrev: { position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.18)', color: '#fff', border: 'none', borderRadius: 22, width: 44, height: 44, fontSize: 26, cursor: 'pointer' },
   viewerNext: { position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.18)', color: '#fff', border: 'none', borderRadius: 22, width: 44, height: 44, fontSize: 26, cursor: 'pointer' },
 };
-
