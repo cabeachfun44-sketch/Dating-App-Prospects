@@ -147,6 +147,10 @@ function blankPerson(name) {
     bucket: 'active',        // active | hold | deleted
     followUpDate: '',        // when to reconnect (YYYY-MM-DD)
     followUpNote: '',        // what to say / ask when you reconnect
+    origin: '',              // how/where you found her (handle, app, event)
+    friendVerdicts: { pursue: 0, meh: 0, pass: 0 }, // friend poll tally
+    friendComments: [],      // [{who, text}]
+    timeline: [],            // [{when, text}] activity log
     status: 'new',
     nextStep: '',
     contact: '',
@@ -210,7 +214,7 @@ function parseJSON(raw) {
 
 async function readProfileWithAI(photos) {
   if (!photos || !photos.length) return null;
-  const instructions = 'These are screenshots from a dating app, numbered starting at 0. They may include her profile AND chat threads between her and the user (his messages are the colored/right-side bubbles; hers are the gray/left-side bubbles). Read EVERYTHING carefully — profile bio, prompts, stat pills, and every chat bubble — and extract every useful fact about HER.\n\nIDENTIFY THE APP from the UI (this matters — never leave it blank if you can tell):\n- Bumble: the user\'s sent messages are YELLOW bubbles; her received messages are light GRAY; header shows her name with phone/video/menu icons; input bar says "Aa" with a GIF button. Bumble is the most common yellow-bubble app. If you see yellow sent bubbles + "Aa" input + GIF/video-note icons, it is almost certainly BUMBLE.\n- Hinge: white background, messages reply to specific profile prompts/photos, often a small quoted prompt above a comment; sent bubbles are usually purple/blue-gray.\n- Tinder: sent bubbles are a blue-to-pink gradient or solid blue.\n- Facebook Dating: sent bubbles are a slightly different yellow with Facebook-style UI.\n- Match, Coffee Meets Bagel, The League: only if clearly labeled.\nDefault a yellow-bubble Aa/GIF interface to "Bumble" unless Facebook branding is visible.\n\nReturn ONLY a raw JSON object, no markdown, with keys: "name" (her first name as shown; "" if not visible), "app" (your best identification from above — do NOT leave blank if you can infer it), "age", "livesIn" (city she states anywhere, including in chat), "hometown", "height", "drinks", "kids" (if she mentions kids at all, summarize e.g. "Has school-age kids, has them on weekends"), "religion", "firstMove" (who sent first message/like; "" if unknown), "vibe" (2-4 word aesthetic label for her, e.g. "Beachy SoCal mom", "Polished nightlife"), "profileNotes" (3-6 sentences capturing her life, personality, and everything notable she revealed — kids, pets, homebody vs social, what she wants, her humor, anything from her bio and chats), "pets" (e.g. "Dog named Hurley" or ""), "details" (array of MANY short {"cat","text"} objects — capture everything worth remembering, cat one of Kids/Sports/Likes/Dislikes/"She said"/Note; aim for 5-10 items when the screenshots are rich), "mainPhotoIndex" (0-based index of the best clear photo OF HER FACE; prefer a real photo over a chat screenshot; if unsure use 0). Use "" or [] for anything not found. Read closely — capture as much as a thoughtful user would.';
+  const instructions = 'These are screenshots from a dating app, numbered starting at 0. They may include her profile AND chat threads between her and the user (his messages are the colored/right-side bubbles; hers are the gray/left-side bubbles). Read EVERYTHING carefully — profile bio, prompts, stat pills, and every chat bubble — and extract every useful fact about HER.\n\nIDENTIFY THE APP from the UI (this matters — never leave it blank if you can tell):\n- Bumble: the user\'s sent messages are YELLOW bubbles; her received messages are light GRAY; header shows her name with phone/video/menu icons; input bar says "Aa" with a GIF button. Bumble is the most common yellow-bubble app. If you see yellow sent bubbles + "Aa" input + GIF/video-note icons, it is almost certainly BUMBLE.\n- Hinge: white background, messages reply to specific profile prompts/photos, often a small quoted prompt above a comment; sent bubbles are usually purple/blue-gray.\n- Tinder: sent bubbles are a blue-to-pink gradient or solid blue.\n- Facebook Dating: sent bubbles are a slightly different yellow with Facebook-style UI.\n- Match, Coffee Meets Bagel, The League: only if clearly labeled.\nDefault a yellow-bubble Aa/GIF interface to "Bumble" unless Facebook branding is visible.\n\nReturn ONLY a raw JSON object, no markdown, with keys: "name" (her first name as shown; "" if not visible), "app" (your best identification from above — do NOT leave blank if you can infer it), "age", "livesIn" (city she states anywhere, including in chat), "hometown", "height", "drinks", "kids" (if she mentions kids at all, summarize e.g. "Has school-age kids, has them on weekends"), "religion", "firstMove" (who sent first message/like; "" if unknown), \"phone\" (her phone number ONLY if she typed one in the chat; \"\" if none), "vibe" (2-4 word aesthetic label for her, e.g. "Beachy SoCal mom", "Polished nightlife"), "profileNotes" (3-6 sentences capturing her life, personality, and everything notable she revealed — kids, pets, homebody vs social, what she wants, her humor, anything from her bio and chats), "pets" (e.g. "Dog named Hurley" or ""), "details" (array of MANY short {"cat","text"} objects — capture everything worth remembering, cat one of Kids/Sports/Likes/Dislikes/"She said"/Note; aim for 5-10 items when the screenshots are rich), "mainPhotoIndex" (0-based index of the best clear photo OF HER FACE; prefer a real photo over a chat screenshot; if unsure use 0). Use "" or [] for anything not found. Read closely — capture as much as a thoughtful user would.';
   return askJSON(instructions, photos, 2500);
 }
 
@@ -419,8 +423,9 @@ export default function ProspectTracker() {
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState('');
   const [filterTier, setFilterTier] = useState(null); // null = all, 0/1/2
-  const [view, setView] = useState('active'); // active | hold | followups | deleted
-  const [sortBy, setSortBy] = useState('myrank'); // default: my manual rank (#1, #2…)
+  const [view, setView] = useState('all'); // all | active | planning | followups | hold | deleted
+  const [showPyramid, setShowPyramid] = useState(false);
+  const [sortBy, setSortBy] = useState('age'); // default sort by age
   const [isPro, setIsPro] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   const [howto, setHowto] = useState(null);
@@ -487,6 +492,10 @@ export default function ProspectTracker() {
         if (p.bucket === undefined) p.bucket = 'active';
         if (p.followUpDate === undefined) p.followUpDate = '';
         if (p.followUpNote === undefined) p.followUpNote = '';
+        if (p.origin === undefined) p.origin = '';
+        if (!p.friendVerdicts) p.friendVerdicts = { pursue: 0, meh: 0, pass: 0 };
+        if (!p.friendComments) p.friendComments = [];
+        if (!p.timeline) p.timeline = [];
         // one-time cleanup: the original seed-Nicky shipped with placeholder photos
         // that were not actually her. Remove them from the stored copy, once.
         if (p.id === 'seed-nicky' && !p._photoFix) {
@@ -623,18 +632,20 @@ export default function ProspectTracker() {
   const visible = people.filter(p => {
     const bucket = p.bucket || 'active';
     // which section are we looking at?
-    if (view === 'active' && bucket !== 'active') return false;
-    if (view === 'hold' && bucket !== 'hold') return false;
-    if (view === 'deleted' && bucket !== 'deleted') return false;
-    if (view === 'followups') {
-      // show anyone (active or hold) who has a follow-up date that's due
+    if (view === 'all') { /* show everyone regardless of bucket */ }
+    else if (view === 'active' && bucket !== 'active') return false;
+    else if (view === 'planning' && bucket !== 'planning') return false;
+    else if (view === 'hold' && bucket !== 'hold') return false;
+    else if (view === 'deleted' && bucket !== 'deleted') return false;
+    else if (view === 'followups') {
+      // show anyone (not deleted) who has a follow-up date that's due
       if (bucket === 'deleted') return false;
       if (!p.followUpDate) return false;
       if (p.followUpDate > todayStr) return false;
     }
     if (filterTier !== null && p.tier !== filterTier) return false;
     if (!q) return true;
-    const hay = (p.name + ' ' + p.app + ' ' + (p.facts.livesIn || '') + ' ' + (p.facts.hometown || '') + ' ' + (p.facts.religion || '') + ' ' + (p.facts.kids || '') + ' ' + p.profileNotes + ' ' + p.myNotes + ' ' + (p.followUpNote || '')).toLowerCase();
+    const hay = (p.name + ' ' + p.app + ' ' + (p.facts.livesIn || '') + ' ' + (p.facts.hometown || '') + ' ' + (p.facts.religion || '') + ' ' + (p.facts.kids || '') + ' ' + (p.contact || '') + ' ' + p.profileNotes + ' ' + p.myNotes + ' ' + (p.followUpNote || '')).toLowerCase();
     return hay.includes(q);
   }).map((p, i) => ({ p, i }))
     .sort((a, b) => {
@@ -681,13 +692,14 @@ export default function ProspectTracker() {
   const counts = [0, 1, 2].map(t => people.filter(p => p.tier === t && (p.bucket || 'active') === 'active').length);
   const needAction = people.filter(p => p.nextStep && p.nextStep.trim() && (p.bucket || 'active') === 'active').length;
   const holdCount = people.filter(p => (p.bucket || 'active') === 'hold').length;
+  const planningCount = people.filter(p => (p.bucket || 'active') === 'planning').length;
   const deletedCount = people.filter(p => (p.bucket || 'active') === 'deleted').length;
   const followUpCount = people.filter(p => (p.bucket || 'active') !== 'deleted' && p.followUpDate && p.followUpDate <= todayStr).length;
 
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v6</span></div>
+        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v7.1</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowWrapped(true)}>📊 Wrapped</button>}
@@ -711,10 +723,13 @@ export default function ProspectTracker() {
 
       {people.length > 0 && (
         <div style={S.viewTabs}>
+          <button style={{ ...S.viewTab, ...(view === 'all' ? S.viewTabOn : {}) }} onClick={() => setView('all')}>All ({people.filter(p => (p.bucket || 'active') !== 'deleted').length})</button>
           <button style={{ ...S.viewTab, ...(view === 'active' ? S.viewTabOn : {}) }} onClick={() => setView('active')}>Active</button>
+          <button style={{ ...S.viewTab, ...(view === 'planning' ? S.viewTabOn : {}) }} onClick={() => setView('planning')}>Planning date{planningCount > 0 ? ' (' + planningCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, ...(view === 'followups' ? S.viewTabOn : {}) }} onClick={() => setView('followups')}>Follow-ups{followUpCount > 0 ? ' (' + followUpCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, ...(view === 'hold' ? S.viewTabOn : {}) }} onClick={() => setView('hold')}>On Hold{holdCount > 0 ? ' (' + holdCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, ...(view === 'deleted' ? S.viewTabOn : {}) }} onClick={() => setView('deleted')}>Deleted{deletedCount > 0 ? ' (' + deletedCount + ')' : ''}</button>
+          <button style={{ ...S.viewTab, background: '#5E5CE6', color: '#fff', borderColor: '#5E5CE6' }} onClick={() => setShowPyramid(true)}>🔺 Pyramid</button>
         </div>
       )}
 
@@ -759,8 +774,9 @@ export default function ProspectTracker() {
         {visible.length === 0 && (
           <div style={S.emptyState}>{
             people.length === 0 ? 'No prospects yet. Tap below to add your first.' :
-            view === 'hold' ? 'Nobody on hold. Open a prospect and set them to "On Hold" to park them here.' :
-            view === 'deleted' ? 'Nobody in the deleted list. Deleted prospects stay here so you remember not to revisit them.' :
+            view === 'planning' ? 'Nobody in planning. Set a prospect\'s List to "Planning" when a date is in the works.' :
+            view === 'hold' ? 'Nobody on hold. Open a prospect and set their List to "Hold" to park them here.' :
+            view === 'deleted' ? 'Nobody deleted. Deleted prospects stay here so you remember not to revisit them.' :
             view === 'followups' ? 'No follow-ups due. Set a follow-up date on a prospect to be reminded to reconnect.' :
             'None match.'
           }</div>
@@ -793,6 +809,7 @@ export default function ProspectTracker() {
                   {p.app ? ' ' + p.app : ''}
                   {p.facts.livesIn ? ' · ' + p.facts.livesIn : ''}
                 </div>
+                {p.drive && (p.drive.shortTime || p.drive.longTime) ? <div style={S.driveLineRow}>🚗 {p.drive.shortTime || p.drive.longTime} to you</div> : null}
                 {p.nextStep && p.nextStep.trim() ? <div style={S.nextStepLine}>⏱ {p.nextStep}</div> : null}
                 {p.followUpDate ? <div style={S.followUpLine}>🔔 {p.followUpDate}{p.followUpNote ? ' — ' + p.followUpNote : ''}</div> : null}
               </div>
@@ -810,6 +827,7 @@ export default function ProspectTracker() {
       {showPaywall && <Paywall onClose={() => setShowPaywall(false)} onUpgrade={goPro} />}
       {howto && <HowToModal item={howto} onClose={() => setHowto(null)} />}
       {showWrapped && <Wrapped people={people} onClose={() => setShowWrapped(false)} />}
+      {showPyramid && <Pyramid people={people} onClose={() => setShowPyramid(false)} onOpen={(id) => { setShowPyramid(false); setOpenId(id); }} />}
       {showPrefs && <PrefsModal onClose={() => setShowPrefs(false)} onSaved={(d) => setHasPrefs(!!(d && d.trim()))} />}
       {whyMatch && <WhyMatch person={whyMatch} onClose={() => setWhyMatch(null)} />}
     </div>
@@ -1334,7 +1352,7 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         {/* bucket: where does this person live? */}
         <div style={S.fieldLabel}>List</div>
         <div style={S.tierRow}>
-          {[['active', 'Active'], ['hold', 'On Hold'], ['deleted', 'Deleted']].map(([key, label]) => (
+          {[['active', 'Active'], ['planning', 'Planning'], ['hold', 'Hold'], ['deleted', 'Deleted']].map(([key, label]) => (
             <button key={key} onClick={() => onUpdate(p.id, { bucket: key })}
               style={{ ...S.appChip, background: (p.bucket || 'active') === key ? '#0A84FF' : '#1c1c1e', color: (p.bucket || 'active') === key ? '#fff' : '#8e8e93' }}>
               {label}
@@ -1352,6 +1370,40 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         <textarea style={S.textarea} value={p.followUpNote || ''}
           placeholder="e.g. Ask how her son's kindergarten start went; her mom visits from Iran every 6 months — ask about family back home."
           onChange={e => onUpdate(p.id, { followUpNote: e.target.value })} />
+        <div style={{ height: 14 }} />
+
+        {/* how/where you found her — never lose track */}
+        <div style={S.fieldLabel}>📍 How / where I found her</div>
+        <input style={S.input} value={p.origin || ''}
+          placeholder="e.g. Bumble, matched Aug 12 · IG @handle · met at Balboa fireworks"
+          onChange={e => onUpdate(p.id, { origin: e.target.value })} />
+        <div style={{ height: 14 }} />
+
+        {/* friend verdict poll — the social layer */}
+        <div style={S.fieldLabel}>👥 Friend verdict</div>
+        <div style={S.verdictRow}>
+          {[['pursue', '👍 Pursue', '#34C759'], ['meh', '🤔 Meh', '#FFCC00'], ['pass', '👎 Pass', '#FF3B30']].map(([key, label, color]) => (
+            <button key={key} style={{ ...S.verdictBtn, borderColor: color }}
+              onClick={() => {
+                const v = { ...(p.friendVerdicts || { pursue: 0, meh: 0, pass: 0 }) };
+                v[key] = (v[key] || 0) + 1;
+                onUpdate(p.id, { friendVerdicts: v });
+              }}>
+              <span style={{ color }}>{label}</span>
+              <span style={S.verdictCount}>{(p.friendVerdicts && p.friendVerdicts[key]) || 0}</span>
+            </button>
+          ))}
+        </div>
+        <div style={{ height: 8 }} />
+        <button style={S.readBtn} onClick={() => {
+          const c = window.prompt('Add a friend comment (e.g. "Jake: go for it!")');
+          if (c && c.trim()) onUpdate(p.id, { friendComments: [...(p.friendComments || []), { text: c.trim() }] });
+        }}>+ Add a friend comment</button>
+        {(p.friendComments || []).length ? (
+          <div style={S.commentsBox}>
+            {(p.friendComments || []).map((c, i) => <div key={i} style={S.commentItem}>💬 {c.text}</div>)}
+          </div>
+        ) : null}
         <div style={{ height: 14 }} />
 
         {/* status */}
@@ -1504,6 +1556,28 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         )}
         {brag !== null ? <div style={S.bragHint}>Screenshot this to share — her name is never shown.</div> : null}
 
+        {/* friends' opinion card — the social layer, made to screenshot & send */}
+        <div style={S.sectionLabel}>🗳️ "Should I pursue?" card</div>
+        <div style={S.friendCard}>
+          <div style={S.friendCardTop}>
+            {p.photos[0] ? <img src={p.photos[0]} style={S.friendCardImg} alt="" /> : <div style={S.friendCardImgBlank}>{(p.name || '?')[0].toUpperCase()}</div>}
+            <div>
+              <div style={S.friendCardName}>{p.name || 'Prospect'}{p.facts.age ? ', ' + p.facts.age : ''}</div>
+              <div style={S.friendCardMeta}>{p.facts.livesIn || ''}{p.app ? ' · ' + p.app : ''}</div>
+              {p.compat && p.compat.score != null ? <div style={{ ...S.friendCardScore, color: matchColor(p.compat.score) }}>{matchEmoji(p.compat.score)} {p.compat.score}/100 match</div> : null}
+            </div>
+          </div>
+          <div style={S.friendCardQ}>What do you think — should I pursue her?</div>
+          <div style={S.friendCardTally}>
+            <span style={{ color: '#34C759' }}>👍 {(p.friendVerdicts && p.friendVerdicts.pursue) || 0}</span>
+            <span style={{ color: '#FFCC00' }}>🤔 {(p.friendVerdicts && p.friendVerdicts.meh) || 0}</span>
+            <span style={{ color: '#FF3B30' }}>👎 {(p.friendVerdicts && p.friendVerdicts.pass) || 0}</span>
+          </div>
+          <div style={S.bragBrand}>Prospects</div>
+        </div>
+        <div style={S.bragHint}>Screenshot &amp; send to friends. Tap their votes into the 👥 Friend verdict buttons above.</div>
+        <div style={{ height: 8 }} />
+
         <div style={S.myNotesLabel}>🎤 My notes</div>
         <textarea style={{ ...S.textarea, ...S.myNotes }} value={p.myNotes} placeholder="Dictate or type your own thoughts…"
           onChange={e => onUpdate(p.id, { myNotes: e.target.value })} />
@@ -1566,6 +1640,7 @@ function applyRead(p, r) {
   const patch = { facts, _autoRead: false };
   if (r.name && (!p.name || !p.name.trim())) patch.name = r.name;
   if (r.app && !p.app) patch.app = r.app;
+  if (r.phone && !p.contact) patch.contact = r.phone;
   if (r.vibe && !p.vibe) patch.vibe = { vibe: r.vibe };
   if (r.profileNotes && !p.profileNotes) patch.profileNotes = r.profileNotes;
   // merge structured details, de-duped
@@ -1777,6 +1852,56 @@ function PrefsModal({ onClose, onSaved }) {
   );
 }
 
+function Pyramid({ people, onClose, onOpen }) {
+  // active + planning prospects, ranked best-first by AI score then interest tier
+  const pool = people.filter(p => (p.bucket || 'active') === 'active' || (p.bucket || 'active') === 'planning');
+  const scored = pool.map(p => {
+    const ai = (p.compat && p.compat.score != null) ? p.compat.score : null;
+    // combined rank: AI score if present, else tier-based fallback
+    const val = ai != null ? ai : (p.tier === 0 ? 75 : p.tier === 1 ? 50 : 25);
+    return { p, val };
+  }).sort((a, b) => b.val - a.val);
+
+  // Build pyramid rows: 1, 2, 3, 4, 5… widening as they go down
+  const rows = [];
+  let idx = 0, rowSize = 1;
+  while (idx < scored.length) {
+    rows.push(scored.slice(idx, idx + rowSize));
+    idx += rowSize;
+    rowSize += 1;
+  }
+
+  return (
+    <div style={S.sheetOverlay} onClick={onClose}>
+      <div style={S.pyramidSheet} onClick={e => e.stopPropagation()}>
+        <div style={S.sheetHandle} />
+        <div style={S.pyramidTitle}>🔺 Your Prospect Pyramid</div>
+        <div style={S.pyramidSub}>Best matches at the top. Tap anyone to open her.</div>
+        <div style={S.pyramidWrap}>
+          {rows.map((row, ri) => (
+            <div key={ri} style={S.pyramidRow}>
+              {row.map(({ p, val }) => {
+                const tier = TIERS[p.tier] || TIERS[1];
+                return (
+                  <div key={p.id} style={{ ...S.pyramidCard, borderColor: tier.color }} onClick={() => onOpen(p.id)}>
+                    {p.photos && p.photos[0]
+                      ? <img src={p.photos[0]} style={S.pyramidImg} alt="" />
+                      : <div style={S.pyramidImgBlank}>{(p.name || '?')[0].toUpperCase()}</div>}
+                    <div style={S.pyramidName}>{p.name || '—'}</div>
+                    <div style={{ ...S.pyramidScore, color: matchColor(val) }}>{Math.round(val)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+          {rows.length === 0 ? <div style={S.pyramidEmpty}>Add prospects to see your pyramid.</div> : null}
+        </div>
+        <button style={S.howtoBtn} onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
+
 function Wrapped({ people, onClose }) {
   const allDates = people.flatMap(p => (p.dates || []).map(d => ({ ...d, who: p.name })));
   const best = allDates.filter(d => d.score).sort((a, b) => (b.score || 0) - (a.score || 0))[0];
@@ -1941,6 +2066,20 @@ const S = {
   bragTier: { display: 'inline-block', marginTop: 8, fontSize: 12, fontWeight: 800, background: 'rgba(255,255,255,0.2)', borderRadius: 7, padding: '3px 9px' },
   bragBrand: { position: 'absolute', top: 12, right: 14, fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.85)', letterSpacing: 0.3 },
   bragHint: { fontSize: 12, color: '#8e8e93', marginBottom: 18, textAlign: 'center' },
+  verdictRow: { display: 'flex', gap: 8 },
+  verdictBtn: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, background: '#1c1c1e', border: '1.5px solid', borderRadius: 11, padding: '10px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+  verdictCount: { fontSize: 18, fontWeight: 900, color: '#fff' },
+  commentsBox: { marginTop: 10, background: '#141416', borderRadius: 12, padding: 12 },
+  commentItem: { fontSize: 13.5, color: '#e5e5ea', marginBottom: 6, lineHeight: 1.4 },
+  friendCard: { background: 'linear-gradient(160deg,#1a1830,#0e0e10)', border: '1.5px solid #5E5CE6', borderRadius: 18, padding: 16, marginBottom: 8 },
+  friendCardTop: { display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 },
+  friendCardImg: { width: 64, height: 64, borderRadius: 12, objectFit: 'cover' },
+  friendCardImgBlank: { width: 64, height: 64, borderRadius: 12, background: '#2c2c2e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, fontWeight: 700, color: '#8e8e93' },
+  friendCardName: { fontSize: 19, fontWeight: 800 },
+  friendCardMeta: { fontSize: 13.5, color: '#c7c7cc', marginTop: 2 },
+  friendCardScore: { fontSize: 14, fontWeight: 800, marginTop: 4 },
+  friendCardQ: { fontSize: 15, fontWeight: 700, textAlign: 'center', margin: '4px 0 10px' },
+  friendCardTally: { display: 'flex', justifyContent: 'center', gap: 20, fontSize: 17, fontWeight: 800, marginBottom: 10 },
 
   howtoCard: { width: '100%', maxWidth: 480, background: '#1c1c1e', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, boxSizing: 'border-box' },
   howtoTitle: { fontSize: 20, fontWeight: 800, marginBottom: 12 },
@@ -1990,6 +2129,7 @@ const S = {
   statusPill: { fontSize: 11, fontWeight: 700, color: '#fff', borderRadius: 6, padding: '1px 6px', marginRight: 2 },
   nextStepLine: { fontSize: 12.5, color: '#FF9F0A', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   followUpLine: { fontSize: 12.5, color: '#5E5CE6', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  driveLineRow: { fontSize: 12.5, color: '#34C759', marginTop: 3, fontWeight: 600 },
 
   statusRow: { display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' },
   statusChip: { border: 'none', borderRadius: 9, padding: '8px 11px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
@@ -2014,6 +2154,17 @@ const S = {
   ideasRefresh: { background: 'none', border: 'none', color: '#0A84FF', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: '4px 0' },
 
   sheetOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 },
+  pyramidSheet: { width: '100%', maxWidth: 480, maxHeight: '92%', overflowY: 'auto', background: '#000', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, boxSizing: 'border-box', border: '0.5px solid #2c2c2e' },
+  pyramidTitle: { fontSize: 24, fontWeight: 900, textAlign: 'center' },
+  pyramidSub: { fontSize: 13, color: '#8e8e93', textAlign: 'center', marginBottom: 18 },
+  pyramidWrap: { display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', marginBottom: 18 },
+  pyramidRow: { display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' },
+  pyramidCard: { width: 72, borderRadius: 12, border: '2px solid', background: '#1c1c1e', padding: 6, cursor: 'pointer', textAlign: 'center', flexShrink: 0 },
+  pyramidImg: { width: 58, height: 58, borderRadius: 9, objectFit: 'cover', display: 'block', margin: '0 auto' },
+  pyramidImgBlank: { width: 58, height: 58, borderRadius: 9, background: '#2c2c2e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 700, color: '#8e8e93', margin: '0 auto' },
+  pyramidName: { fontSize: 11, fontWeight: 700, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  pyramidScore: { fontSize: 15, fontWeight: 900, lineHeight: 1 },
+  pyramidEmpty: { color: '#8e8e93', fontSize: 14, textAlign: 'center', padding: 20 },
   sheet: { width: '100%', maxWidth: 480, maxHeight: '92%', overflowY: 'auto', background: '#000', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, boxSizing: 'border-box', border: '0.5px solid #2c2c2e' },
   sheetHandle: { width: 40, height: 5, borderRadius: 3, background: '#3a3a3c', margin: '0 auto 16px' },
   sheetTitle: { fontSize: 22, fontWeight: 800, marginBottom: 18 },
