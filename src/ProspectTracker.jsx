@@ -712,7 +712,7 @@ export default function ProspectTracker() {
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v8</span></div>
+        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v9</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowWrapped(true)}>📊 Wrapped</button>}
@@ -1590,33 +1590,15 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
           <div style={S.bragBrand}>Prospects</div>
         </div>
         <button style={S.shareBtn} onClick={async () => {
-          const lines = [
-            'Should I pursue her? 👀',
-            (p.name || 'A prospect') + (p.facts.age ? ', ' + p.facts.age : ''),
-            [p.facts.livesIn, p.app].filter(Boolean).join(' · '),
-            p.compat && p.compat.score != null ? ('Match: ' + p.compat.score + '/100') : '',
-            p.profileNotes ? ('About her: ' + p.profileNotes) : '',
-            '',
-            'Vote: 👍 pursue / 🤔 meh / 👎 pass',
-          ].filter(Boolean).join('\n');
+          const text = 'Should I pursue her? 👍 pursue / 🤔 meh / 👎 pass';
           try {
-            // share her main photo too, if we can
-            if (p.photos && p.photos[0] && navigator.canShare) {
-              try {
-                const resp = await fetch(p.photos[0]);
-                const blob = await resp.blob();
-                const file = new File([blob], (p.name || 'prospect') + '.jpg', { type: blob.type || 'image/jpeg' });
-                if (navigator.canShare({ files: [file] })) {
-                  await navigator.share({ files: [file], text: lines });
-                  return;
-                }
-              } catch (e) {}
-            }
-            if (navigator.share) { await navigator.share({ text: lines }); }
-            else { await navigator.clipboard.writeText(lines); alert('Copied! Paste it to your friends.'); }
-          } catch (e) {}
-        }}>📤 Share with friends</button>
-        <div style={S.bragHint}>One tap opens your phone's share sheet — send to any friend via text, iMessage, or WhatsApp. Tap their votes into the 👥 buttons above.</div>
+            const blob = await renderProspectCard(p);
+            await shareCardBlob(blob, text);
+          } catch (e) {
+            try { if (navigator.share) await navigator.share({ text }); } catch (e2) {}
+          }
+        }}>📤 Share her card</button>
+        <div style={S.bragHint}>Makes a fun image card (up to 4 of her pics + her stats + a vote prompt) and opens your share sheet — text it to friends. Tap their votes into the 👥 buttons above.</div>
         <div style={{ height: 8 }} />
 
         <div style={S.myNotesLabel}>🎤 My notes</div>
@@ -1710,6 +1692,165 @@ function scoreColor(score) {
   if (n >= 8) return '#34C759';
   if (n >= 5) return '#FFCC00';
   return '#FF3B30';
+}
+
+// ---- Shareable card image rendering (canvas → PNG → native share) ----
+function loadImg(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// Build a shareable PNG for ONE prospect: a photo collage + her info + vote prompt.
+async function renderProspectCard(p) {
+  const W = 1080, H = 1350;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  // background
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#1a1830'); g.addColorStop(1, '#0a0a0c');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  // photo collage (up to 4)
+  const pics = (p.photos || []).slice(0, 4);
+  const imgs = [];
+  for (const src of pics) { const im = await loadImg(src); if (im) imgs.push(im); }
+  const gridX = 60, gridY = 60, gridW = W - 120, gridH = 720, gap = 12;
+  if (imgs.length === 1) {
+    roundRectPath(ctx, gridX, gridY, gridW, gridH, 28); ctx.save(); ctx.clip();
+    drawCover(ctx, imgs[0], gridX, gridY, gridW, gridH); ctx.restore();
+  } else if (imgs.length >= 2) {
+    const cols = 2, rows = Math.ceil(Math.min(imgs.length, 4) / 2);
+    const cw = (gridW - gap) / 2, ch = (gridH - (rows - 1) * gap) / rows;
+    imgs.slice(0, 4).forEach((im, i) => {
+      const cx = gridX + (i % 2) * (cw + gap);
+      const cy = gridY + Math.floor(i / 2) * (ch + gap);
+      roundRectPath(ctx, cx, cy, cw, ch, 20); ctx.save(); ctx.clip();
+      drawCover(ctx, im, cx, cy, cw, ch); ctx.restore();
+    });
+  } else {
+    // no photos — initial circle
+    ctx.fillStyle = '#2c2c2e'; roundRectPath(ctx, gridX, gridY, gridW, gridH, 28); ctx.fill();
+    ctx.fillStyle = '#8e8e93'; ctx.font = 'bold 200px -apple-system, sans-serif';
+    ctx.textAlign = 'center'; ctx.fillText((p.name || '?')[0].toUpperCase(), W / 2, gridY + gridH / 2 + 70);
+  }
+
+  // text
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 76px -apple-system, sans-serif';
+  const nameLine = (p.name || 'A prospect') + (p.facts && p.facts.age ? ', ' + p.facts.age : '');
+  ctx.fillText(nameLine, 60, 870);
+  ctx.fillStyle = '#c7c7cc';
+  ctx.font = '42px -apple-system, sans-serif';
+  const meta = [p.facts && p.facts.livesIn, p.app].filter(Boolean).join('  ·  ');
+  if (meta) ctx.fillText(meta, 60, 930);
+  if (p.compat && p.compat.score != null) {
+    ctx.fillStyle = matchColor(p.compat.score);
+    ctx.font = 'bold 48px -apple-system, sans-serif';
+    ctx.fillText(matchEmoji(p.compat.score) + '  ' + p.compat.score + '/100 match', 60, 1000);
+  }
+  // vote prompt
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 56px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Should I pursue her?', W / 2, 1120);
+  ctx.font = '52px -apple-system, sans-serif';
+  ctx.fillText('👍 pursue    🤔 meh    👎 pass', W / 2, 1200);
+  ctx.fillStyle = '#5E5CE6';
+  ctx.font = 'bold 36px -apple-system, sans-serif';
+  ctx.fillText('Prospects', W / 2, 1290);
+
+  return await new Promise(res => canvas.toBlob(b => res(b), 'image/png', 0.92));
+}
+
+function drawCover(ctx, img, x, y, w, h) {
+  const ir = img.width / img.height, r = w / h;
+  let sw, sh, sx, sy;
+  if (ir > r) { sh = img.height; sw = sh * r; sx = (img.width - sw) / 2; sy = 0; }
+  else { sw = img.width; sh = sw / r; sx = 0; sy = (img.height - sh) / 2; }
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+
+async function shareCardBlob(blob, text) {
+  if (!blob) { if (navigator.share) await navigator.share({ text }); return; }
+  const file = new File([blob], 'prospect.png', { type: 'image/png' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], text });
+      return;
+    }
+  } catch (e) {}
+  // fallback: download the image so the user can attach it
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'prospect.png'; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+// Render the whole pyramid (everyone's photos) as one shareable PNG.
+async function renderPyramidCard(ordered) {
+  const W = 1080;
+  // build rows 1,2,3,4…
+  const rows = []; let idx = 0, size = 1;
+  while (idx < ordered.length) { rows.push(ordered.slice(idx, idx + size)); idx += size; size += 1; }
+  const cell = 150, gap = 16, topPad = 180, rowGap = 30;
+  const H = topPad + rows.length * (cell + 30 + rowGap) + 80;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = Math.max(H, 700);
+  const ctx = canvas.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  g.addColorStop(0, '#1a1830'); g.addColorStop(1, '#0a0a0c');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, canvas.height);
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+  ctx.font = 'bold 64px -apple-system, sans-serif';
+  ctx.fillText('🔺 My Prospect Pyramid', W / 2, 90);
+  ctx.fillStyle = '#8e8e93'; ctx.font = '36px -apple-system, sans-serif';
+  ctx.fillText('Who belongs on top? Send me your ranking 👀', W / 2, 145);
+
+  // preload images
+  const imgMap = {};
+  for (const p of ordered) { if (p.photos && p.photos[0]) imgMap[p.id] = await loadImg(p.photos[0]); }
+
+  let y = topPad;
+  for (const row of rows) {
+    const rowW = row.length * cell + (row.length - 1) * gap;
+    let x = (W - rowW) / 2;
+    for (const p of row) {
+      const tier = TIERS[p.tier] || TIERS[1];
+      roundRectPath(ctx, x, y, cell, cell, 22); ctx.save(); ctx.clip();
+      const im = imgMap[p.id];
+      if (im) drawCover(ctx, im, x, y, cell, cell);
+      else { ctx.fillStyle = '#2c2c2e'; ctx.fillRect(x, y, cell, cell); ctx.fillStyle = '#8e8e93'; ctx.font = 'bold 70px -apple-system, sans-serif'; ctx.textAlign = 'center'; ctx.fillText((p.name || '?')[0].toUpperCase(), x + cell / 2, y + cell / 2 + 25); }
+      ctx.restore();
+      // tier border
+      ctx.strokeStyle = tier.color; ctx.lineWidth = 6; roundRectPath(ctx, x, y, cell, cell, 22); ctx.stroke();
+      // name
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 28px -apple-system, sans-serif'; ctx.textAlign = 'center';
+      const nm = (p.name || '—').slice(0, 10);
+      ctx.fillText(nm, x + cell / 2, y + cell + 26);
+      x += cell + gap;
+    }
+    y += cell + 30 + rowGap;
+  }
+  ctx.fillStyle = '#5E5CE6'; ctx.font = 'bold 34px -apple-system, sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Prospects', W / 2, canvas.height - 30);
+  return await new Promise(res => canvas.toBlob(b => res(b), 'image/png', 0.92));
 }
 
 // Match score (0-100) → emoji + color, for the card badge
@@ -1953,6 +2094,12 @@ function Pyramid({ people, onClose, onOpen, onReorder }) {
           {ordered.length === 0 ? <div style={S.pyramidEmpty}>Add prospects to see your pyramid.</div> : null}
         </div>
         <div style={S.pyramidDragHint}>Drag a card onto another to move it there. Deleted prospects appear dimmed.</div>
+        <button style={S.shareBtn} onClick={async () => {
+          try {
+            const blob = await renderPyramidCard(ordered);
+            await shareCardBlob(blob, 'My prospect pyramid — who belongs on top? 👀');
+          } catch (e) {}
+        }}>📤 Share my pyramid</button>
         <button style={S.howtoBtn} onClick={onClose}>Close</button>
       </div>
     </div>
