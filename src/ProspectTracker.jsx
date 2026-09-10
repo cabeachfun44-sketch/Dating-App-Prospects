@@ -15,7 +15,7 @@ const TIERS = [
   { color: '#FFCC00', label: 'Medium' },
   { color: '#FF3B30', label: 'Low' },
 ];
-const APPS = ['Hinge', 'Bumble', 'Tinder', 'Facebook Dating', 'Match', 'Coffee Meets Bagel', 'The League', 'Other'];
+const APPS = ['Hinge', 'Bumble', 'Tinder', 'Other'];
 
 // Deep link to open a dating app so you can paste your reply and send (compliant —
 // we never message on your behalf, just open the app for you).
@@ -214,7 +214,7 @@ function parseJSON(raw) {
 
 async function readProfileWithAI(photos) {
   if (!photos || !photos.length) return null;
-  const instructions = 'These are screenshots from a dating app, numbered starting at 0. They may include her profile AND chat threads between her and the user (his messages are the colored/right-side bubbles; hers are the gray/left-side bubbles). Read EVERYTHING carefully — profile bio, prompts, stat pills, and every chat bubble — and extract every useful fact about HER.\n\nIDENTIFY THE APP from the UI (this matters — never leave it blank if you can tell):\n- Bumble: the user\'s sent messages are YELLOW bubbles; her received messages are light GRAY; header shows her name with phone/video/menu icons; input bar says "Aa" with a GIF button. Bumble is the most common yellow-bubble app. If you see yellow sent bubbles + "Aa" input + GIF/video-note icons, it is almost certainly BUMBLE.\n- Hinge: white background, messages reply to specific profile prompts/photos, often a small quoted prompt above a comment; sent bubbles are usually purple/blue-gray.\n- Tinder: sent bubbles are a blue-to-pink gradient or solid blue.\n- Facebook Dating: sent bubbles are a slightly different yellow with Facebook-style UI.\n- Match, Coffee Meets Bagel, The League: only if clearly labeled.\nDefault a yellow-bubble Aa/GIF interface to "Bumble" unless Facebook branding is visible.\n\nReturn ONLY a raw JSON object, no markdown, with keys: "name" (her first name as shown; "" if not visible), "app" (your best identification from above — do NOT leave blank if you can infer it), "age", "livesIn" (city she states anywhere, including in chat), "hometown", "height", "drinks", "kids" (if she mentions kids at all, summarize e.g. "Has school-age kids, has them on weekends"), "religion", "firstMove" (who sent first message/like; "" if unknown), \"phone\" (her phone number ONLY if she typed one in the chat; \"\" if none), "vibe" (2-4 word aesthetic label for her, e.g. "Beachy SoCal mom", "Polished nightlife"), "profileNotes" (3-6 sentences capturing her life, personality, and everything notable she revealed — kids, pets, homebody vs social, what she wants, her humor, anything from her bio and chats), "pets" (e.g. "Dog named Hurley" or ""), "details" (array of MANY short {"cat","text"} objects — capture everything worth remembering, cat one of Kids/Sports/Likes/Dislikes/"She said"/Note; aim for 5-10 items when the screenshots are rich), "mainPhotoIndex" (0-based index of the best clear photo OF HER FACE; prefer a real photo over a chat screenshot; if unsure use 0). Use "" or [] for anything not found. Read closely — capture as much as a thoughtful user would.';
+  const instructions = 'These are screenshots from a dating app, numbered starting at 0. They may include her profile AND chat threads between her and the user (his messages are the colored/right-side bubbles; hers are the gray/left-side bubbles). Read EVERYTHING carefully — profile bio, prompts, stat pills, and every chat bubble — and extract every useful fact about HER.\n\nIDENTIFY THE APP — it is ALWAYS one of exactly three: Hinge, Bumble, or Tinder. Never pick anything else. Decide by the interface:\n- BUMBLE: sent (your) messages are YELLOW bubbles, received are light gray; the message input bar shows \"Aa\" with a GIF button; header shows her name with phone/video icons. Yellow bubbles = Bumble.\n- HINGE: messages attach to a specific profile prompt or photo (a small quoted prompt/photo sits above the comment); sent bubbles are muted purple/blue-gray on white.\n- TINDER: sent bubbles are a blue-to-pink gradient (or solid blue); very minimal chat UI.\nPick the single best of Hinge/Bumble/Tinder. If genuinely unsure, pick the closest match — never leave it blank and never invent another app.\n\nReturn ONLY a raw JSON object, no markdown, with keys: "name" (her first name as shown; "" if not visible), "app" (your best identification from above — do NOT leave blank if you can infer it), "age", "livesIn" (city she states anywhere, including in chat), "hometown", "height", "drinks", "kids" (if she mentions kids at all, summarize e.g. "Has school-age kids, has them on weekends"), "religion", "firstMove" (who sent first message/like; "" if unknown), \"phone\" (her phone number ONLY if she typed one in the chat; \"\" if none), "vibe" (2-4 word aesthetic label for her, e.g. "Beachy SoCal mom", "Polished nightlife"), "profileNotes" (3-6 sentences capturing her life, personality, and everything notable she revealed — kids, pets, homebody vs social, what she wants, her humor, anything from her bio and chats), "pets" (e.g. "Dog named Hurley" or ""), "details" (array of MANY short {"cat","text"} objects — capture everything worth remembering, cat one of Kids/Sports/Likes/Dislikes/"She said"/Note; aim for 5-10 items when the screenshots are rich), "mainPhotoIndex" (0-based index of the best clear photo OF HER FACE; prefer a real photo over a chat screenshot; if unsure use 0). Use "" or [] for anything not found. Read closely — capture as much as a thoughtful user would.';
   return askJSON(instructions, photos, 2500);
 }
 
@@ -565,6 +565,19 @@ export default function ProspectTracker() {
     setOpenId(null);
   }, []);
 
+  const reorderByIds = useCallback((idOrder) => {
+    setPeople(prev => {
+      const byId = {}; prev.forEach(p => { byId[p.id] = p; });
+      const next = idOrder.map(id => byId[id]).filter(Boolean).map((p, idx) => ({ ...p, myRank: String(idx + 1) }));
+      // include any people not in idOrder (safety)
+      prev.forEach(p => { if (!idOrder.includes(p.id)) next.push(p); });
+      sset(INDEX_KEY, next.map(p => p.id));
+      sset(MIRROR_KEY, next);
+      next.forEach(p => sset(personKey(p.id), p));
+      return next;
+    });
+  }, []);
+
   const move = useCallback((id, dir) => {
     setPeople(prev => {
       const i = prev.findIndex(p => p.id === id);
@@ -699,7 +712,7 @@ export default function ProspectTracker() {
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v7.1</span></div>
+        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v8</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowWrapped(true)}>📊 Wrapped</button>}
@@ -827,7 +840,7 @@ export default function ProspectTracker() {
       {showPaywall && <Paywall onClose={() => setShowPaywall(false)} onUpgrade={goPro} />}
       {howto && <HowToModal item={howto} onClose={() => setHowto(null)} />}
       {showWrapped && <Wrapped people={people} onClose={() => setShowWrapped(false)} />}
-      {showPyramid && <Pyramid people={people} onClose={() => setShowPyramid(false)} onOpen={(id) => { setShowPyramid(false); setOpenId(id); }} />}
+      {showPyramid && <Pyramid people={people} onClose={() => setShowPyramid(false)} onOpen={(id) => { setShowPyramid(false); setOpenId(id); }} onReorder={reorderByIds} />}
       {showPrefs && <PrefsModal onClose={() => setShowPrefs(false)} onSaved={(d) => setHasPrefs(!!(d && d.trim()))} />}
       {whyMatch && <WhyMatch person={whyMatch} onClose={() => setWhyMatch(null)} />}
     </div>
@@ -1172,6 +1185,7 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
           <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
             onChange={e => { addPhotos(e.target.files); e.target.value = ''; }} />
         </div>
+        <div style={S.multiHint}>Tap + then <b>Select</b> to add all her screenshots at once — no need to add them one by one.</div>
 
         {/* ===== MATCH INTELLIGENCE — the hero panel ===== */}
         <div style={isPro ? S.miPro : S.miFree}>
@@ -1575,7 +1589,34 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
           </div>
           <div style={S.bragBrand}>Prospects</div>
         </div>
-        <div style={S.bragHint}>Screenshot &amp; send to friends. Tap their votes into the 👥 Friend verdict buttons above.</div>
+        <button style={S.shareBtn} onClick={async () => {
+          const lines = [
+            'Should I pursue her? 👀',
+            (p.name || 'A prospect') + (p.facts.age ? ', ' + p.facts.age : ''),
+            [p.facts.livesIn, p.app].filter(Boolean).join(' · '),
+            p.compat && p.compat.score != null ? ('Match: ' + p.compat.score + '/100') : '',
+            p.profileNotes ? ('About her: ' + p.profileNotes) : '',
+            '',
+            'Vote: 👍 pursue / 🤔 meh / 👎 pass',
+          ].filter(Boolean).join('\n');
+          try {
+            // share her main photo too, if we can
+            if (p.photos && p.photos[0] && navigator.canShare) {
+              try {
+                const resp = await fetch(p.photos[0]);
+                const blob = await resp.blob();
+                const file = new File([blob], (p.name || 'prospect') + '.jpg', { type: blob.type || 'image/jpeg' });
+                if (navigator.canShare({ files: [file] })) {
+                  await navigator.share({ files: [file], text: lines });
+                  return;
+                }
+              } catch (e) {}
+            }
+            if (navigator.share) { await navigator.share({ text: lines }); }
+            else { await navigator.clipboard.writeText(lines); alert('Copied! Paste it to your friends.'); }
+          } catch (e) {}
+        }}>📤 Share with friends</button>
+        <div style={S.bragHint}>One tap opens your phone's share sheet — send to any friend via text, iMessage, or WhatsApp. Tap their votes into the 👥 buttons above.</div>
         <div style={{ height: 8 }} />
 
         <div style={S.myNotesLabel}>🎤 My notes</div>
@@ -1852,50 +1893,66 @@ function PrefsModal({ onClose, onSaved }) {
   );
 }
 
-function Pyramid({ people, onClose, onOpen }) {
-  // active + planning prospects, ranked best-first by AI score then interest tier
-  const pool = people.filter(p => (p.bucket || 'active') === 'active' || (p.bucket || 'active') === 'planning');
-  const scored = pool.map(p => {
-    const ai = (p.compat && p.compat.score != null) ? p.compat.score : null;
-    // combined rank: AI score if present, else tier-based fallback
-    const val = ai != null ? ai : (p.tier === 0 ? 75 : p.tier === 1 ? 50 : 25);
-    return { p, val };
-  }).sort((a, b) => b.val - a.val);
+function Pyramid({ people, onClose, onOpen, onReorder }) {
+  // EVERYONE (including hold/planning/deleted), in current rank/array order.
+  const [order, setOrder] = React.useState(people.map(p => p.id));
+  const [dragId, setDragId] = React.useState(null);
+  const byId = {}; people.forEach(p => { byId[p.id] = p; });
+  const ordered = order.map(id => byId[id]).filter(Boolean);
 
-  // Build pyramid rows: 1, 2, 3, 4, 5… widening as they go down
+  // Build widening pyramid rows: 1,2,3,4…
   const rows = [];
   let idx = 0, rowSize = 1;
-  while (idx < scored.length) {
-    rows.push(scored.slice(idx, idx + rowSize));
-    idx += rowSize;
-    rowSize += 1;
+  while (idx < ordered.length) {
+    rows.push(ordered.slice(idx, idx + rowSize));
+    idx += rowSize; rowSize += 1;
   }
+
+  const moveBefore = (dragId, targetId) => {
+    if (dragId === targetId) return;
+    setOrder(prev => {
+      const next = prev.filter(x => x !== dragId);
+      const ti = next.indexOf(targetId);
+      next.splice(ti, 0, dragId);
+      if (onReorder) onReorder(next);
+      return next;
+    });
+  };
 
   return (
     <div style={S.sheetOverlay} onClick={onClose}>
       <div style={S.pyramidSheet} onClick={e => e.stopPropagation()}>
         <div style={S.sheetHandle} />
         <div style={S.pyramidTitle}>🔺 Your Prospect Pyramid</div>
-        <div style={S.pyramidSub}>Best matches at the top. Tap anyone to open her.</div>
+        <div style={S.pyramidSub}>Everyone, top pick at the peak. <b>Drag</b> anyone to reposition, or tap to open.</div>
         <div style={S.pyramidWrap}>
           {rows.map((row, ri) => (
             <div key={ri} style={S.pyramidRow}>
-              {row.map(({ p, val }) => {
+              {row.map((p) => {
                 const tier = TIERS[p.tier] || TIERS[1];
+                const ai = (p.compat && p.compat.score != null) ? p.compat.score : null;
+                const dimmed = (p.bucket || 'active') === 'deleted';
                 return (
-                  <div key={p.id} style={{ ...S.pyramidCard, borderColor: tier.color }} onClick={() => onOpen(p.id)}>
+                  <div key={p.id}
+                    draggable
+                    onDragStart={() => setDragId(p.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => { if (dragId) moveBefore(dragId, p.id); setDragId(null); }}
+                    onClick={() => onOpen(p.id)}
+                    style={{ ...S.pyramidCard, borderColor: tier.color, opacity: dimmed ? 0.4 : 1 }}>
                     {p.photos && p.photos[0]
-                      ? <img src={p.photos[0]} style={S.pyramidImg} alt="" />
+                      ? <img src={p.photos[0]} style={S.pyramidImg} alt="" draggable={false} />
                       : <div style={S.pyramidImgBlank}>{(p.name || '?')[0].toUpperCase()}</div>}
                     <div style={S.pyramidName}>{p.name || '—'}</div>
-                    <div style={{ ...S.pyramidScore, color: matchColor(val) }}>{Math.round(val)}</div>
+                    {ai != null ? <div style={{ ...S.pyramidScore, color: matchColor(ai) }}>{ai}</div> : <div style={{ ...S.pyramidScore, color: '#8e8e93' }}>—</div>}
                   </div>
                 );
               })}
             </div>
           ))}
-          {rows.length === 0 ? <div style={S.pyramidEmpty}>Add prospects to see your pyramid.</div> : null}
+          {ordered.length === 0 ? <div style={S.pyramidEmpty}>Add prospects to see your pyramid.</div> : null}
         </div>
+        <div style={S.pyramidDragHint}>Drag a card onto another to move it there. Deleted prospects appear dimmed.</div>
         <button style={S.howtoBtn} onClick={onClose}>Close</button>
       </div>
     </div>
@@ -2080,6 +2137,8 @@ const S = {
   friendCardScore: { fontSize: 14, fontWeight: 800, marginTop: 4 },
   friendCardQ: { fontSize: 15, fontWeight: 700, textAlign: 'center', margin: '4px 0 10px' },
   friendCardTally: { display: 'flex', justifyContent: 'center', gap: 20, fontSize: 17, fontWeight: 800, marginBottom: 10 },
+  shareBtn: { width: '100%', background: 'linear-gradient(135deg,#0A84FF,#5E5CE6)', color: '#fff', border: 'none', borderRadius: 12, padding: '15px', fontSize: 16, fontWeight: 800, cursor: 'pointer', marginTop: 10 },
+  multiHint: { fontSize: 12.5, color: '#8e8e93', marginBottom: 12, lineHeight: 1.4, marginTop: -4 },
 
   howtoCard: { width: '100%', maxWidth: 480, background: '#1c1c1e', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, boxSizing: 'border-box' },
   howtoTitle: { fontSize: 20, fontWeight: 800, marginBottom: 12 },
@@ -2165,6 +2224,7 @@ const S = {
   pyramidName: { fontSize: 11, fontWeight: 700, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   pyramidScore: { fontSize: 15, fontWeight: 900, lineHeight: 1 },
   pyramidEmpty: { color: '#8e8e93', fontSize: 14, textAlign: 'center', padding: 20 },
+  pyramidDragHint: { fontSize: 12, color: '#8e8e93', textAlign: 'center', marginBottom: 14 },
   sheet: { width: '100%', maxWidth: 480, maxHeight: '92%', overflowY: 'auto', background: '#000', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, boxSizing: 'border-box', border: '0.5px solid #2c2c2e' },
   sheetHandle: { width: 40, height: 5, borderRadius: 3, background: '#3a3a3c', margin: '0 auto 16px' },
   sheetTitle: { fontSize: 22, fontWeight: 800, marginBottom: 18 },
