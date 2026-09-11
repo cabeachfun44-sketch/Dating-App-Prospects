@@ -1,4 +1,4 @@
-// ==================== VERSION 10 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 11 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sget, sset, sdel, storageMode as cloudStorageMode } from './storage.js';
 
@@ -431,6 +431,7 @@ export default function ProspectTracker() {
   const [showPaywall, setShowPaywall] = useState(false);
   const [howto, setHowto] = useState(null);
   const [showWrapped, setShowWrapped] = useState(false);
+  const [showCoach, setShowCoach] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
   const [hasPrefs, setHasPrefs] = useState(false);
   const [whyMatch, setWhyMatch] = useState(null);
@@ -713,9 +714,10 @@ export default function ProspectTracker() {
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v10</span></div>
+        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v11</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
+          {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowWrapped(true)}>📊 Wrapped</button>}
           {isPro
             ? <span style={S.proBadge}>PRO</span>
@@ -841,6 +843,7 @@ export default function ProspectTracker() {
       {showPaywall && <Paywall onClose={() => setShowPaywall(false)} onUpgrade={goPro} />}
       {howto && <HowToModal item={howto} onClose={() => setHowto(null)} />}
       {showWrapped && <Wrapped people={people} onClose={() => setShowWrapped(false)} />}
+      {showCoach && <Coach people={people} onClose={() => setShowCoach(false)} onOpen={(id) => { setShowCoach(false); setOpenId(id); }} />}
       {showPyramid && <Pyramid people={people} onClose={() => setShowPyramid(false)} onOpen={(id) => { setShowPyramid(false); setOpenId(id); }} onReorder={reorderByIds} />}
       {showPrefs && <PrefsModal onClose={() => setShowPrefs(false)} onSaved={(d) => setHasPrefs(!!(d && d.trim()))} />}
       {whyMatch && <WhyMatch person={whyMatch} onClose={() => setWhyMatch(null)} />}
@@ -1385,6 +1388,20 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         <textarea style={S.textarea} value={p.followUpNote || ''}
           placeholder="e.g. Ask how her son's kindergarten start went; her mom visits from Iran every 6 months — ask about family back home."
           onChange={e => onUpdate(p.id, { followUpNote: e.target.value })} />
+        {p.followUpDate ? (
+          <button style={S.readBtn} onClick={() => {
+            const dt = (p.followUpDate || '').replace(/-/g, '');
+            const title = 'Reconnect with ' + (p.name || 'prospect');
+            const desc = (p.followUpNote || '').replace(/\n/g, ' ');
+            const ics = ['BEGIN:VCALENDAR','VERSION:2.0','BEGIN:VEVENT',
+              'DTSTART;VALUE=DATE:' + dt, 'SUMMARY:' + title, 'DESCRIPTION:' + desc,
+              'END:VEVENT','END:VCALENDAR'].join('\r\n');
+            const blob = new Blob([ics], { type: 'text/calendar' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'reconnect.ics'; a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 4000);
+          }}>📅 Add reminder to my calendar</button>
+        ) : null}
         <div style={{ height: 14 }} />
 
         {/* how/where you found her — never lose track */}
@@ -1602,7 +1619,7 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         <div style={S.bragHint}>Makes a fun image card (up to 4 of her pics + her stats + a vote prompt) and opens your share sheet — text it to friends. Tap their votes into the 👥 buttons above.</div>
         <div style={{ height: 8 }} />
 
-        <div style={S.myNotesLabel}>🎤 My notes</div>
+        <div style={S.myNotesLabel}>🎤 My notes (tap the mic on your keyboard to talk)</div>
         <textarea style={{ ...S.textarea, ...S.myNotes }} value={p.myNotes} placeholder="Dictate or type your own thoughts…"
           onChange={e => onUpdate(p.id, { myNotes: e.target.value })} />
 
@@ -2107,6 +2124,96 @@ function Pyramid({ people, onClose, onOpen, onReorder }) {
   );
 }
 
+function Coach({ people, onClose, onOpen }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const active = people.filter(p => (p.bucket || 'active') === 'active' || (p.bucket || 'active') === 'planning');
+
+  // ----- WEEKLY PRIORITIZE DIGEST -----
+  // Score urgency: has a next step, follow-up due, high interest, high AI match, or going cold.
+  const scored = active.map(p => {
+    let why = [];
+    let urgency = 0;
+    if (p.followUpDate && p.followUpDate <= today) { urgency += 40; why.push('follow-up due'); }
+    if (p.nextStep && p.nextStep.trim()) { urgency += 25; why.push(p.nextStep.trim()); }
+    if (p.tier === 0) urgency += 20;
+    const ai = (p.compat && p.compat.score != null) ? p.compat.score : null;
+    if (ai != null && ai >= 75) { urgency += 15; why.push('strong match'); }
+    // going cold: added a while ago, status still new/talking, no recent date
+    if ((p.status === 'new' || p.status === 'talking') && (!p.dates || p.dates.length === 0)) { urgency += 10; why.push('no date yet'); }
+    return { p, urgency, why, ai };
+  }).sort((a, b) => b.urgency - a.urgency);
+
+  const toActOn = scored.filter(s => s.urgency > 0).slice(0, 3);
+  const letGo = scored.filter(s => (s.p.status === 'faded')).slice(0, 2);
+
+  // ----- OUTCOME ANALYTICS -----
+  const allDates = people.flatMap(p => (p.dates || []).map(d => ({ ...d, who: p.name })));
+  const scoredDates = allDates.filter(d => d.score);
+  const good = scoredDates.filter(d => (parseInt(d.score, 10) || 0) >= 7);
+  const bad = scoredDates.filter(d => (parseInt(d.score, 10) || 0) <= 4);
+  const avg = scoredDates.length ? (scoredDates.reduce((s, d) => s + (parseInt(d.score, 10) || 0), 0) / scoredDates.length).toFixed(1) : null;
+  // which apps produce your best prospects (avg AI score by app)
+  const appStats = {};
+  people.forEach(p => {
+    if (!p.app) return;
+    const ai = (p.compat && p.compat.score != null) ? p.compat.score : null;
+    if (ai == null) return;
+    if (!appStats[p.app]) appStats[p.app] = { sum: 0, n: 0 };
+    appStats[p.app].sum += ai; appStats[p.app].n += 1;
+  });
+  const appRanked = Object.keys(appStats).map(a => ({ app: a, avg: Math.round(appStats[a].sum / appStats[a].n), n: appStats[a].n })).sort((x, y) => y.avg - x.avg);
+
+  return (
+    <div style={S.sheetOverlay} onClick={onClose}>
+      <div style={S.coachSheet} onClick={e => e.stopPropagation()}>
+        <div style={S.sheetHandle} />
+        <div style={S.coachTitle}>🧠 Your Weekly Coach</div>
+
+        {/* prioritize digest */}
+        <div style={S.coachSection}>🎯 Act on these this week</div>
+        {toActOn.length === 0 ? <div style={S.coachEmpty}>Nothing urgent. Add a next-step or follow-up date to a prospect to see priorities here.</div> :
+          toActOn.map(({ p, why }) => (
+            <div key={p.id} style={S.coachRow} onClick={() => onOpen(p.id)}>
+              {p.photos && p.photos[0] ? <img src={p.photos[0]} style={S.coachImg} alt="" /> : <div style={S.coachImgBlank}>{(p.name || '?')[0].toUpperCase()}</div>}
+              <div style={S.coachRowMid}>
+                <div style={S.coachName}>{p.name || 'Untitled'}</div>
+                <div style={S.coachWhy}>{why.slice(0, 2).join(' · ')}</div>
+              </div>
+            </div>
+          ))}
+
+        {letGo.length > 0 && (
+          <>
+            <div style={S.coachSection}>🍂 Consider letting go</div>
+            {letGo.map(({ p }) => (
+              <div key={p.id} style={S.coachRow} onClick={() => onOpen(p.id)}>
+                {p.photos && p.photos[0] ? <img src={p.photos[0]} style={S.coachImg} alt="" /> : <div style={S.coachImgBlank}>{(p.name || '?')[0].toUpperCase()}</div>}
+                <div style={S.coachRowMid}>
+                  <div style={S.coachName}>{p.name || 'Untitled'}</div>
+                  <div style={S.coachWhy}>Faded — move to Hold or Deleted to clear your list</div>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* outcome analytics */}
+        <div style={S.coachSection}>📊 What's working for you</div>
+        {scoredDates.length === 0 ? <div style={S.coachEmpty}>Log a few dates with scores and your patterns show up here — what kinds of dates and which apps lead to the best nights.</div> : (
+          <div style={S.coachStatsBox}>
+            <div style={S.coachStat}>Dates logged: <b>{allDates.length}</b> · Avg rating: <b>{avg}/10</b></div>
+            {good.length ? <div style={S.coachStatGood}>✅ Best nights: {good.slice(0, 3).map(d => d.place || d.when).filter(Boolean).join(', ')}</div> : null}
+            {bad.length ? <div style={S.coachStatBad}>⛔ Fell flat: {bad.slice(0, 3).map(d => d.place || d.when).filter(Boolean).join(', ')}</div> : null}
+            {appRanked.length ? <div style={S.coachStat}>Best app for you: <b>{appRanked[0].app}</b> (avg match {appRanked[0].avg})</div> : null}
+          </div>
+        )}
+
+        <button style={S.howtoBtn} onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
+
 function Wrapped({ people, onClose }) {
   const allDates = people.flatMap(p => (p.dates || []).map(d => ({ ...d, who: p.name })));
   const best = allDates.filter(d => d.score).sort((a, b) => (b.score || 0) - (a.score || 0))[0];
@@ -2362,6 +2469,20 @@ const S = {
 
   sheetOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 },
   pyramidSheet: { width: '100%', maxWidth: 480, maxHeight: '92%', overflowY: 'auto', background: '#000', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, boxSizing: 'border-box', border: '0.5px solid #2c2c2e' },
+  coachSheet: { width: '100%', maxWidth: 480, maxHeight: '92%', overflowY: 'auto', background: '#000', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, boxSizing: 'border-box', border: '0.5px solid #2c2c2e' },
+  coachTitle: { fontSize: 24, fontWeight: 900, textAlign: 'center', marginBottom: 6 },
+  coachSection: { fontSize: 13, fontWeight: 800, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 22, marginBottom: 10 },
+  coachEmpty: { fontSize: 13.5, color: '#8e8e93', lineHeight: 1.5, background: '#141416', borderRadius: 12, padding: 14 },
+  coachRow: { display: 'flex', alignItems: 'center', gap: 12, background: '#1c1c1e', borderRadius: 14, padding: 12, marginBottom: 8, cursor: 'pointer' },
+  coachImg: { width: 48, height: 48, borderRadius: 10, objectFit: 'cover', flexShrink: 0 },
+  coachImgBlank: { width: 48, height: 48, borderRadius: 10, background: '#2c2c2e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: '#8e8e93', flexShrink: 0 },
+  coachRowMid: { flex: 1, minWidth: 0 },
+  coachName: { fontSize: 16, fontWeight: 700 },
+  coachWhy: { fontSize: 13, color: '#FF9F0A', marginTop: 2, lineHeight: 1.35 },
+  coachStatsBox: { background: '#141416', borderRadius: 14, padding: 14 },
+  coachStat: { fontSize: 14, color: '#e5e5ea', marginBottom: 8, lineHeight: 1.4 },
+  coachStatGood: { fontSize: 13.5, color: '#7ee29b', marginBottom: 8, lineHeight: 1.4 },
+  coachStatBad: { fontSize: 13.5, color: '#ff8f88', marginBottom: 8, lineHeight: 1.4 },
   pyramidTitle: { fontSize: 24, fontWeight: 900, textAlign: 'center' },
   pyramidSub: { fontSize: 13, color: '#8e8e93', textAlign: 'center', marginBottom: 18 },
   pyramidWrap: { display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', marginBottom: 18 },
