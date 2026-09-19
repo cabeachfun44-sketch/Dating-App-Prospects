@@ -1,6 +1,6 @@
-// ==================== VERSION 11 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 12 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { sget, sset, sdel, storageMode as cloudStorageMode } from './storage.js';
+import { sget, sset, sdel, storageMode as cloudStorageMode, sgetAllPersons } from './storage.js';
 
 const FREE_LIMIT = 3;
 const PRO_KEY = 'is_pro';
@@ -470,6 +470,13 @@ export default function ProspectTracker() {
       const ids = new Set(base.map(p => p && p.id));
       other.forEach(p => { if (p && !ids.has(p.id)) { base.push(p); ids.add(p.id); } });
 
+      // RECOVERY: also pull EVERY person row directly from the cloud, in case the
+      // index/mirror lost track of some. This restores any "disappeared" prospects.
+      try {
+        const all = await sgetAllPersons();
+        all.forEach(p => { if (p && p.id && !ids.has(p.id)) { base.push(p); ids.add(p.id); } });
+      } catch (e) {}
+
       let list = base.filter(Boolean);
 
       // Seed people (Mallory, Nicky) are PERMANENT — always ensure they exist,
@@ -714,7 +721,7 @@ export default function ProspectTracker() {
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v11</span></div>
+        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v12</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
