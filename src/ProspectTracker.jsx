@@ -1,4 +1,4 @@
-// ==================== VERSION 12 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 13 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sget, sset, sdel, storageMode as cloudStorageMode, sgetAllPersons } from './storage.js';
 
@@ -587,6 +587,24 @@ export default function ProspectTracker() {
     });
   }, []);
 
+  // Type a rank number → move that person to that position, renumber everyone.
+  const setRank = useCallback((id, rankStr) => {
+    const target = parseInt(rankStr, 10);
+    setPeople(prev => {
+      const cur = prev.slice();
+      const from = cur.findIndex(p => p.id === id);
+      if (from < 0) return prev;
+      const [moved] = cur.splice(from, 1);
+      let to = isNaN(target) ? cur.length : Math.max(0, Math.min(cur.length, target - 1));
+      cur.splice(to, 0, moved);
+      const next = cur.map((p, idx) => ({ ...p, myRank: String(idx + 1) }));
+      sset(INDEX_KEY, next.map(p => p.id));
+      sset(MIRROR_KEY, next);
+      next.forEach(p => sset(personKey(p.id), p));
+      return next;
+    });
+  }, []);
+
   const move = useCallback((id, dir) => {
     setPeople(prev => {
       const i = prev.findIndex(p => p.id === id);
@@ -631,6 +649,7 @@ export default function ProspectTracker() {
           onNeedPro={() => setShowPaywall(true)}
           onHowto={setHowto}
           learnings={buildLearnings(people)}
+          onSetRank={setRank}
         />
         {howto && <HowToModal item={howto} onClose={() => setHowto(null)} />}
         {showPaywall && <Paywall onClose={() => setShowPaywall(false)} onUpgrade={goPro} />}
@@ -658,6 +677,7 @@ export default function ProspectTracker() {
     else if (view === 'active' && bucket !== 'active') return false;
     else if (view === 'planning' && bucket !== 'planning') return false;
     else if (view === 'hold' && bucket !== 'hold') return false;
+    else if (view === 'inner' && bucket !== 'inner') return false;
     else if (view === 'deleted' && bucket !== 'deleted') return false;
     else if (view === 'followups') {
       // show anyone (not deleted) who has a follow-up date that's due
@@ -715,13 +735,14 @@ export default function ProspectTracker() {
   const needAction = people.filter(p => p.nextStep && p.nextStep.trim() && (p.bucket || 'active') === 'active').length;
   const holdCount = people.filter(p => (p.bucket || 'active') === 'hold').length;
   const planningCount = people.filter(p => (p.bucket || 'active') === 'planning').length;
+  const innerCount = people.filter(p => (p.bucket || 'active') === 'inner').length;
   const deletedCount = people.filter(p => (p.bucket || 'active') === 'deleted').length;
   const followUpCount = people.filter(p => (p.bucket || 'active') !== 'deleted' && p.followUpDate && p.followUpDate <= todayStr).length;
 
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v12</span></div>
+        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v13</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
@@ -751,7 +772,8 @@ export default function ProspectTracker() {
           <button style={{ ...S.viewTab, ...(view === 'planning' ? S.viewTabOn : {}) }} onClick={() => setView('planning')}>Planning date{planningCount > 0 ? ' (' + planningCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, ...(view === 'followups' ? S.viewTabOn : {}) }} onClick={() => setView('followups')}>Follow-ups{followUpCount > 0 ? ' (' + followUpCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, ...(view === 'hold' ? S.viewTabOn : {}) }} onClick={() => setView('hold')}>On Hold{holdCount > 0 ? ' (' + holdCount + ')' : ''}</button>
-          <button style={{ ...S.viewTab, ...(view === 'deleted' ? S.viewTabOn : {}) }} onClick={() => setView('deleted')}>Deleted{deletedCount > 0 ? ' (' + deletedCount + ')' : ''}</button>
+          <button style={{ ...S.viewTab, ...(view === 'inner' ? { background: '#8e44ad', color: '#fff', borderColor: '#8e44ad' } : {}) }} onClick={() => setView('inner')}>💜 Inner Circle{innerCount > 0 ? ' (' + innerCount + ')' : ''}</button>
+          <button style={{ ...S.viewTab, ...(view === 'deleted' ? S.viewTabOn : {}) }} onClick={() => setView('deleted')}>Archive{deletedCount > 0 ? ' (' + deletedCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, background: '#5E5CE6', color: '#fff', borderColor: '#5E5CE6' }} onClick={() => setShowPyramid(true)}>🔺 Pyramid</button>
         </div>
       )}
@@ -799,7 +821,8 @@ export default function ProspectTracker() {
             people.length === 0 ? 'No prospects yet. Tap below to add your first.' :
             view === 'planning' ? 'Nobody in planning. Set a prospect\'s List to "Planning" when a date is in the works.' :
             view === 'hold' ? 'Nobody on hold. Open a prospect and set their List to "Hold" to park them here.' :
-            view === 'deleted' ? 'Nobody deleted. Deleted prospects stay here so you remember not to revisit them.' :
+            view === 'inner' ? 'Inner Circle is empty. Set a prospect\'s List to 💜 Inner to keep her here — discreet and private.' :
+            view === 'deleted' ? 'Archive is empty. Parked prospects stay here for reference in case they resurface — never truly deleted.' :
             view === 'followups' ? 'No follow-ups due. Set a follow-up date on a prospect to be reminded to reconnect.' :
             'None match.'
           }</div>
@@ -909,7 +932,7 @@ function AddScreen({ onCancel, onCreate, onHowto }) {
 }
 
 // ================= DETAIL SCREEN =================
-function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto, learnings }) {
+function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto, learnings, onSetRank }) {
   const p = person;
   const tier = TIERS[p.tier] || TIERS[1];
   const fileRef = useRef(null);
@@ -1176,7 +1199,7 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
       <div style={S.navBar}>
         <button style={S.navBtn} onClick={onBack}>‹ List</button>
         <div style={S.navTitle}>{p.name || 'Prospect'}</div>
-        <button style={confirmDel ? S.navDeleteArmed : S.navDelete} onClick={() => { if (confirmDel) { onUpdate(p.id, { bucket: 'deleted' }); onBack(); } else { setConfirmDel(true); setTimeout(() => setConfirmDel(false), 3000); } }}>{confirmDel ? 'Move to Deleted' : 'Delete'}</button>
+        <button style={confirmDel ? S.navDeleteArmed : S.navDelete} onClick={() => { if (confirmDel) { onUpdate(p.id, { bucket: 'deleted' }); onBack(); } else { setConfirmDel(true); setTimeout(() => setConfirmDel(false), 3000); } }}>{confirmDel ? 'Move to Archive' : 'Archive'}</button>
       </div>
 
       <div style={S.detailBody}>
@@ -1369,17 +1392,19 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         </div>
 
         {/* my manual rank */}
-        <div style={S.fieldLabel}>My rank (1 = top pick)</div>
+        <div style={S.fieldLabel}>My rank (type a number — 1 = top pick)</div>
         <input style={S.input} type="number" min="1" value={p.myRank || ''} placeholder="e.g. 1"
-          onChange={e => onUpdate(p.id, { myRank: e.target.value })} />
+          onChange={e => onUpdate(p.id, { myRank: e.target.value })}
+          onBlur={e => { if (e.target.value) onSetRank(p.id, e.target.value); }} />
+        <div style={S.rankHint}>Type the position and tap away — it moves them there and renumbers everyone. Shows up in the list and pyramid instantly.</div>
         <div style={{ height: 14 }} />
 
         {/* bucket: where does this person live? */}
         <div style={S.fieldLabel}>List</div>
-        <div style={S.tierRow}>
-          {[['active', 'Active'], ['planning', 'Planning'], ['hold', 'Hold'], ['deleted', 'Deleted']].map(([key, label]) => (
+        <div style={S.bucketWrap}>
+          {[['active', 'Active'], ['planning', 'Planning'], ['hold', 'Hold'], ['inner', '💜 Inner'], ['deleted', 'Archive']].map(([key, label]) => (
             <button key={key} onClick={() => onUpdate(p.id, { bucket: key })}
-              style={{ ...S.appChip, background: (p.bucket || 'active') === key ? '#0A84FF' : '#1c1c1e', color: (p.bucket || 'active') === key ? '#fff' : '#8e8e93' }}>
+              style={{ ...S.appChip, flex: 'none', padding: '9px 12px', background: (p.bucket || 'active') === key ? (key === 'inner' ? '#8e44ad' : '#0A84FF') : '#1c1c1e', color: (p.bucket || 'active') === key ? '#fff' : '#8e8e93' }}>
               {label}
             </button>
           ))}
@@ -2434,6 +2459,8 @@ const S = {
   viewTabs: { display: 'flex', gap: 6, padding: '0 16px 12px', flexWrap: 'wrap' },
   viewTab: { background: '#1c1c1e', color: '#8e8e93', border: '1px solid #2c2c2e', borderRadius: 9, padding: '7px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
   viewTabOn: { background: '#0A84FF', color: '#fff', borderColor: '#0A84FF' },
+  rankHint: { fontSize: 12, color: '#8e8e93', marginTop: 5, lineHeight: 1.4 },
+  bucketWrap: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18 },
   statChip: { fontSize: 13, color: '#c7c7cc', background: '#1c1c1e', borderRadius: 9, padding: '6px 10px', fontWeight: 600 },
 
   searchWrap: { position: 'relative', padding: '0 16px 10px' },
