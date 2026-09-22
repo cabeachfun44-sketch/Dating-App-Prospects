@@ -1,4 +1,4 @@
-// ==================== VERSION 18 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 19 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sget, sset, sdel, storageMode as cloudStorageMode, sgetAllPersons } from './storage.js';
 
@@ -8,7 +8,7 @@ const PRO_KEY = 'is_pro';
 // The user's dating profile — baked in so it is ALWAYS present, never needs
 // saving, and can never be lost to storage. Editable in "My type" (a saved
 // override is used if present), but this is the permanent default.
-const DEFAULT_ME_DESC = "I'm 60, very active, fit, and I clean up well for a nice restaurant. I'm attracted to active, fit, thin, in-shape women roughly 40-50 (45 is my sweet spot; 55 is my max), who are young and energetic mentally and physically. I love dogs. I'm a family man with older kids and I like women with kids - older kids ideally, but young kids are fine too. I like sports but don't require a partner to. Dealbreakers / low ranking: snooty, stuck-up, high-maintenance, or demanding vibes. Orange County / SoCal profiles that are all about designer outfits, purses, fancy cars, Michelin-star restaurants, opera, Beverly Hills, extravagant travel, and high-end hotels are a turn-off - if her profile signals she expects that from the start, rank her low and say why. Flag anything snooty or entitled in her photos or words.";
+const DEFAULT_ME_DESC = "I'm 60, very active, fit, and I clean up well for a nice restaurant. I'm attracted to active, fit, thin, in-shape women roughly 40-50 (45 is my sweet spot; 55 is my max), who are young and energetic mentally and physically. I love dogs. I'm a family man with older kids and I like women with kids - older kids ideally, but young kids are fine too. I like sports but don't require a partner to. Dealbreakers / low ranking: snooty, stuck-up, high-maintenance, or demanding vibes. Orange County / SoCal profiles that are all about designer outfits, purses, fancy cars, Michelin-star restaurants, opera, Beverly Hills, extravagant travel, and high-end hotels are a turn-off - if their profile signals she expects that from the start, rank her low and say why. Flag anything snooty or entitled in her photos or words.";
 
 
 const TIERS = [
@@ -42,15 +42,15 @@ const STATUSES = [
 
 // "See how it works" copy for the info dots
 const HOWTO = {
-  autofill: { title: '✨ Auto-fill from photos', body: 'Screenshot her profile (and your chat), add the images, then tap this. The app reads every screenshot — stat pills, prompts, even who messaged first — and fills in her age, city, height, and more automatically. No typing.' },
-  ideas: { title: '💡 Date & chat ideas', body: 'The app reads everything you know about her — her profile, your notes, how past dates scored — and writes you 3 openers to text right now, 3 real date spots near you that fit her interests, 3 talking points, and one strategic tip. It gets sharper after every date you log.' },
-  greenflag: { title: '🟢 Green/Red flag scan', body: 'Reads her profile and chat screenshots and surfaces the subtle green flags (things worth leaning into) and potential red flags (things worth a second look) most people miss.' },
+  autofill: { title: '✨ Auto-fill from photos', body: 'Screenshot their profile (and your chat), add the images, then tap this. The app reads every screenshot — stat pills, prompts, even who messaged first — and fills in her age, city, height, and more automatically. No typing.' },
+  ideas: { title: '💡 Date & chat ideas', body: 'The app reads everything you know about her — their profile, your notes, how past dates scored — and writes you 3 openers to text right now, 3 real date spots near you that fit her interests, 3 talking points, and one strategic tip. It gets sharper after every date you log.' },
+  greenflag: { title: '🟢 Green/Red flag scan', body: 'Reads their profile and chat screenshots and surfaces the subtle green flags (things worth leaning into) and potential red flags (things worth a second look) most people miss.' },
   compat: { title: '❤️ Match score + Do\'s & Don\'ts', body: 'Fill out "My type" once (tap it up top). Then this reads her whole profile against what you want and gives a 0-100 match, plus specific Do\'s and Don\'ts — "she\'s sober, don\'t suggest drinks," "she\'s vegan, here are 3 spots near Balboa Island" — and flags your dealbreakers when it spots them. The more you tell it about your type, the sharper it gets.' },
   brag: { title: '📸 Brag Card', body: 'Turns a match into a clean, shareable card - her best photo, a witty caption, and your "stats" - that you can send to your group chat. Names are auto-hidden so it is private and shareable. This is the feature friends screenshot and pass around.' },
-  chatcoach: { title: '🎯 Reply Coach', body: 'Paste what she last said, and get 3 great replies instantly - playful, sincere, or bold - each tuned to her vibe from her profile.' },
+  chatcoach: { title: '🎯 Reply Coach', body: 'Paste what she last said, and get 3 great replies instantly - playful, sincere, or bold - each tuned to her vibe from their profile.' },
   ghost: { title: '👻 Ghost radar', body: 'Flags anyone you have not moved forward with in a while so nobody good slips through the cracks.' },
   wrapped: { title: '📊 Dating Wrapped', body: 'A shareable, Spotify-Wrapped-style recap of your dating life - dates logged, best-rated night, your type, your month. The kind of thing people post and their friends immediately want the app.' },
-  vibe: { title: '🎨 Her vibe', body: 'The app reads her photos and names her aesthetic - "coastal sporty," "downtown art girl" - so your date idea actually matches her world.' },
+  vibe: { title: '🎨 Their vibe', body: 'The app reads her photos and names her aesthetic - "coastal sporty," "downtown art girl" - so your date idea actually matches her world.' },
 };
 
 const FACTS = [
@@ -217,7 +217,7 @@ function parseJSON(raw) {
 // Detect which of these photos are chat/message screenshots. Returns array of 0-based indexes.
 async function detectChats(photos) {
   if (!photos || !photos.length) return [];
-  const prompt = 'Look at these images, numbered from 0. Some are a woman\'s dating PROFILE PHOTOS (pictures of her, places, activities) and some are CHAT/MESSAGE screenshots (conversation threads, message bubbles, text exchanges, an app chat interface). Return ONLY a raw JSON object: {"chatIndexes":[list of 0-based indexes that are chat/message screenshots]}. Be thorough — flag EVERY chat screenshot. Empty array if none are chats.';
+  const prompt = 'Look at these images, numbered from 0. Some are a person\'s dating PROFILE PHOTOS (pictures of her, places, activities) and some are CHAT/MESSAGE screenshots (conversation threads, message bubbles, text exchanges, an app chat interface). Return ONLY a raw JSON object: {"chatIndexes":[list of 0-based indexes that are chat/message screenshots]}. Be thorough — flag EVERY chat screenshot. Empty array if none are chats.';
   try {
     const r = await askJSON(prompt, photos, 300);
     return Array.isArray(r.chatIndexes) ? r.chatIndexes : [];
@@ -226,7 +226,7 @@ async function detectChats(photos) {
 
 async function readProfileWithAI(photos) {
   if (!photos || !photos.length) return null;
-  const instructions = 'These are screenshots from a dating app, numbered starting at 0. They may include her profile AND chat threads between her and the user (his messages are the colored/right-side bubbles; hers are the gray/left-side bubbles). Read EVERYTHING carefully — profile bio, prompts, stat pills, and every chat bubble — and extract every useful fact about HER.\n\nIDENTIFY THE APP — it is ALWAYS one of exactly three: Hinge, Bumble, or Tinder. Never pick anything else. Decide by the interface:\n- BUMBLE: sent (your) messages are YELLOW bubbles, received are light gray; the message input bar shows \"Aa\" with a GIF button; header shows her name with phone/video icons. Yellow bubbles = Bumble.\n- HINGE: messages attach to a specific profile prompt or photo (a small quoted prompt/photo sits above the comment); sent bubbles are muted purple/blue-gray on white.\n- TINDER: sent bubbles are a blue-to-pink gradient (or solid blue); very minimal chat UI.\nPick the single best of Hinge/Bumble/Tinder. If genuinely unsure, pick the closest match — never leave it blank and never invent another app.\n\nReturn ONLY a raw JSON object, no markdown, with keys: "name" (her first name as shown; "" if not visible), "app" (your best identification from above — do NOT leave blank if you can infer it), "age", "livesIn" (city she states anywhere, including in chat), "hometown", "height", "drinks", "kids" (if she mentions kids at all, summarize e.g. "Has school-age kids, has them on weekends"), "religion", "firstMove" (who sent first message/like; "" if unknown), \"phone\" (her phone number ONLY if she typed one in the chat; \"\" if none), "vibe" (2-4 word aesthetic label for her, e.g. "Beachy SoCal mom", "Polished nightlife"), "profileNotes" (3-6 sentences capturing her life, personality, and everything notable she revealed — kids, pets, homebody vs social, what she wants, her humor, anything from her bio and chats), "pets" (e.g. "Dog named Hurley" or ""), "details" (array of MANY short {"cat","text"} objects — capture everything worth remembering, cat one of Kids/Sports/Likes/Dislikes/"She said"/Note; aim for 5-10 items when the screenshots are rich), "chatIndexes" (array of 0-based indexes of any images that are CHAT/MESSAGE screenshots — conversation threads, message bubbles, text exchanges — as opposed to her actual profile photos; be thorough, flag EVERY chat screenshot; empty array if none), "mainPhotoIndex" (0-based index of the best clear photo OF HER FACE; prefer a real photo over a chat screenshot; if unsure use 0). Use "" or [] for anything not found. Read closely — capture as much as a thoughtful user would.';
+  const instructions = 'These are screenshots from a dating app, numbered starting at 0. They may include their profile AND chat threads between her and the user (his messages are the colored/right-side bubbles; hers are the gray/left-side bubbles). Read EVERYTHING carefully — profile bio, prompts, stat pills, and every chat bubble — and extract every useful fact about THEM.\n\nIDENTIFY THE APP — it is ALWAYS one of exactly three: Hinge, Bumble, or Tinder. Never pick anything else. Decide by the interface:\n- BUMBLE: sent (your) messages are YELLOW bubbles, received are light gray; the message input bar shows \"Aa\" with a GIF button; header shows her name with phone/video icons. Yellow bubbles = Bumble.\n- HINGE: messages attach to a specific profile prompt or photo (a small quoted prompt/photo sits above the comment); sent bubbles are muted purple/blue-gray on white.\n- TINDER: sent bubbles are a blue-to-pink gradient (or solid blue); very minimal chat UI.\nPick the single best of Hinge/Bumble/Tinder. If genuinely unsure, pick the closest match — never leave it blank and never invent another app.\n\nReturn ONLY a raw JSON object, no markdown, with keys: "name" (her first name as shown; "" if not visible), "app" (your best identification from above — do NOT leave blank if you can infer it), "age", "livesIn" (city she states anywhere, including in chat), "hometown", "height", "drinks", "kids" (if she mentions kids at all, summarize e.g. "Has school-age kids, has them on weekends"), "religion", "firstMove" (who sent first message/like; "" if unknown), \"phone\" (her phone number ONLY if she typed one in the chat; \"\" if none), "vibe" (2-4 word aesthetic label for her, e.g. "Beachy SoCal mom", "Polished nightlife"), "profileNotes" (3-6 sentences capturing her life, personality, and everything notable she revealed — kids, pets, homebody vs social, what sthey want, her humor, anything from her bio and chats), "pets" (e.g. "Dog named Hurley" or ""), "details" (array of MANY short {"cat","text"} objects — capture everything worth remembering, cat one of Kids/Sports/Likes/Dislikes/"She said"/Note; aim for 5-10 items when the screenshots are rich), "chatIndexes" (array of 0-based indexes of any images that are CHAT/MESSAGE screenshots — conversation threads, message bubbles, text exchanges — as opposed to her actual profile photos; be thorough, flag EVERY chat screenshot; empty array if none), "mainPhotoIndex" (0-based index of the best clear photo OF HER FACE; prefer a real photo over a chat screenshot; if unsure use 0). Use "" or [] for anything not found. Read closely — capture as much as a thoughtful user would.';
   return askJSON(instructions, photos, 2500);
 }
 
@@ -256,9 +256,9 @@ async function generateDateIdeas(person, me, learnings) {
     datesSummary ? 'Dates so far: ' + datesSummary : 'No dates yet',
   ].filter(Boolean).join('\n');
   const anyDates = (p.dates || []).length > 0;
-  const prompt = `You are a sharp, socially-savvy dating coach helping a man plan his ${anyDates ? 'next' : 'first'} date and conversation with a woman he's tracking. He lives ON Balboa Island, Newport Beach, California. Use the specific details of HER to make it personal — reference her interests, her profile, how prior dates went. Pick spots near her, near him, or roughly halfway between her location and Balboa Island.
+  const prompt = `You are a sharp, socially-savvy dating coach helping someone plan his ${anyDates ? 'next' : 'first'} date and conversation with a person he's tracking. He lives ON Balboa Island, Newport Beach, California. Use the specific details of HER to make it personal — reference her interests, their profile, how prior dates went. Pick spots near her, near him, or roughly halfway between her location and Balboa Island.
 
-${me ? 'HIS preferences (honor these):\n' + me + '\n' : ''}${learnings ? 'What has WORKED on his past dates (favor these vibes, avoid what scored low):\n' + learnings + '\n' : ''}
+${me ? 'THEIR preferences (honor these):\n' + me + '\n' : ''}${learnings ? 'What has WORKED on his past dates (favor these vibes, avoid what scored low):\n' + learnings + '\n' : ''}
 Her info:
 ${context}
 
@@ -358,19 +358,19 @@ function buildLearnings(people) {
 }
 
 async function scanFlags(p) {
-  const prompt = `Based on this woman's dating profile and any chat screenshots, list subtle GREEN flags (positive signals worth leaning into) and potential RED flags (worth a second look). Be specific to her, not generic. Her info:\n${personContext(p)}\n\nRespond ONLY with raw JSON: {"green": [up to 4 short strings], "red": [up to 3 short strings]}. Each under 14 words. If nothing notable for a category, use an empty array.`;
+  const prompt = `Based on this person's dating profile and any chat screenshots, list subtle GREEN flags (positive signals worth leaning into) and potential RED flags (worth a second look). Be specific to her, not generic. Her info:\n${personContext(p)}\n\nRespond ONLY with raw JSON: {"green": [up to 4 short strings], "red": [up to 3 short strings]}. Each under 14 words. If nothing notable for a category, use an empty array.`;
   return askJSON(prompt, p.photos, 600);
 }
 
 async function freeMatchTaste(p, me) {
-  const prompt = `Give a QUICK, basic read of this woman for the user — this is the free-tier teaser, so keep it minimal (paid unlocks the deep version). ${me ? 'His preferences: "' + me + '". ' : 'He has not set preferences yet, so judge general date-worthiness. '}Her info:\n${personContext(p)}\n\nEven if information is sparse, you MUST still give your best estimate. Respond ONLY with raw JSON: {"score": number 0-100 (rough match — never null, always a number), "vibe": "2-4 word aesthetic label (guess from any available detail)"}. No reasons, no tips — just those two.`;
+  const prompt = `Give a QUICK, basic read of this person for the user — this is the free-tier teaser, so keep it minimal (paid unlocks the deep version). ${me ? 'His preferences: "' + me + '". ' : 'He has not set preferences yet, so judge general date-worthiness. '}Her info:\n${personContext(p)}\n\nEven if information is sparse, you MUST still give your best estimate. Respond ONLY with raw JSON: {"score": number 0-100 (rough match — never null, always a number), "vibe": "2-4 word aesthetic label (guess from any available detail)"}. No reasons, no tips — just those two.`;
   return askJSON(prompt, p.photos, 300);
 }
 
 async function matchVerdict(p, me, learnings) {
-  const prompt = `You are the dating assistant behind an app that helps a man evaluate women he is tracking. Your job: read HER profile and screenshots VERY closely and tell him how good a match she is FOR HIM, and make his life easier with specific, concrete guidance so he looks outstanding.
+  const prompt = `You are the dating assistant behind an app that helps a man evaluate women he is tracking. Your job: read THEIR profile and screenshots VERY closely and tell him how good a match she is FOR THE USER, and make his life easier with specific, concrete guidance so he looks outstanding.
 
-HIS preferences and what he is looking for (the more detail, the better you tailor — if sparse, do your best and note it):
+THEIR preferences and what he is looking for (the more detail, the better you tailor — if sparse, do your best and note it):
 """
 ${me || '(He has not filled out his preferences yet — give a general read and gently note that filling out his profile will sharply improve matching.)'}
 """
@@ -388,7 +388,7 @@ Produce a close read. Even if info is sparse (few facts, no chats), you MUST sti
 "reasons": [2-4 short strings on why the score is what it is, tied to his preferences],
 "dos": [up to 4 short "DO" tips specific to her],
 "donts": [up to 4 short "DON'T" tips — e.g. "She is sober — do NOT invite her for drinks"],
-"dealbreakerHits": [any of HIS stated dislikes/dealbreakers you actually spot in her profile, quoted briefly; empty array if none],
+"dealbreakerHits": [any of HIS stated dislikes/dealbreakers you actually spot in their profile, quoted briefly; empty array if none],
 "dateIdeas": [exactly 3 objects, one casual, one upscale, one beachy/fun, each: {"vibe":"Casual|Upscale|Beachy","place":"specific named spot + neighborhood","price":"$|$$|$$$","why":"under 16 words why it fits HER and works as a date"}],
 "missingInfo": "one short line on what info would sharpen this, or empty string".
 Be specific and honest, never flattering. Use real, plausible Southern California / Orange County places.`;
@@ -406,7 +406,7 @@ async function readVibe(photos) {
 }
 
 async function bragCaption(p) {
-  const prompt = `Write a short, witty, brag-worthy one-line caption for a "prospect card" this guy would share with his group chat about a woman he matched with. Keep her name out of it. Her info:\n${personContext(p)}\n\nRespond ONLY with raw JSON: {"caption": "under 15 words, fun and a little cocky but classy"}.`;
+  const prompt = `Write a short, witty, brag-worthy one-line caption for a "prospect card" this person would share with his group chat about a person he matched with. Keep her name out of it. Her info:\n${personContext(p)}\n\nRespond ONLY with raw JSON: {"caption": "under 15 words, fun and a little cocky but classy"}.`;
   return askJSON(prompt, null, 200);
 }
 
@@ -414,7 +414,7 @@ async function bragCaption(p) {
 // The model answers AND may return field updates to apply (e.g. fixing her name).
 async function askAboutPerson(p, question) {
   const factKeys = 'age, livesIn, hometown, height, drinks, kids, religion, firstMove';
-  const prompt = `You are the user's dating assistant, embedded inside a specific woman's profile in his prospect-tracking app. He is asking you something about HER, and may be pointing you to details visible in her screenshots (attached). Look carefully at every attached image (profile tabs, prompts, stat pills, chat threads) to answer.
+  const prompt = `You are the user's dating assistant, embedded inside a specific person's profile in the user's dating options app. The user is asking you something about THEM, and may be pointing you to details visible in the attached screenshots (attached). Look carefully at every attached image (profile tabs, prompts, stat pills, chat threads) to answer.
 
 What is already saved about her:
 ${personContext(p)}
@@ -754,7 +754,7 @@ export default function ProspectTracker() {
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v18</span></div>
+        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v19</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
@@ -830,11 +830,11 @@ export default function ProspectTracker() {
       <div style={S.list}>
         {visible.length === 0 && (
           <div style={S.emptyState}>{
-            people.length === 0 ? 'No prospects yet. Tap below to add your first.' :
-            view === 'planning' ? 'Nobody in planning. Set a prospect\'s List to "Planning" when a date is in the works.' :
-            view === 'hold' ? 'Nobody on hold. Open a prospect and set their List to "Hold" to park them here.' :
-            view === 'inner' ? 'Inner Circle is empty. Set a prospect\'s List to 💜 Inner to keep her here — discreet and private.' :
-            view === 'deleted' ? 'Archive is empty. Parked prospects stay here for reference in case they resurface — never truly deleted.' :
+            people.length === 0 ? 'No options yet. Tap below to add your first.' :
+            view === 'planning' ? 'Nobody in planning. Set an option\'s List to "Planning" when a date is in the works.' :
+            view === 'hold' ? 'Nobody on hold. Open an option and set their List to "Hold" to park them here.' :
+            view === 'inner' ? 'Inner Circle is empty. Set an option\'s List to 💜 Inner to keep her here — discreet and private.' :
+            view === 'deleted' ? 'Archive is empty. Parked options stay here for reference in case they resurface — never truly deleted.' :
             view === 'followups' ? 'No follow-ups due. Set a follow-up date on a prospect to be reminded to reconnect.' :
             'None match.'
           }</div>
@@ -880,7 +880,7 @@ export default function ProspectTracker() {
         })}
       </div>
 
-      <button style={S.fab} onClick={tryAdd}>+ Add prospect</button>
+      <button style={S.fab} onClick={tryAdd}>+ Add option</button>
 
       {showPaywall && <Paywall onClose={() => setShowPaywall(false)} onUpgrade={goPro} />}
       {howto && <HowToModal item={howto} onClose={() => setHowto(null)} />}
@@ -921,7 +921,7 @@ function AddScreen({ onCancel, onCreate, onHowto }) {
     <div style={S.screen}>
       <div style={S.navBar}>
         <button style={S.navBtn} onClick={onCancel}>Cancel</button>
-        <div style={S.navTitle}>New prospect</div>
+        <div style={S.navTitle}>New option</div>
         <button style={{ ...S.navBtn, ...S.navBtnDone, opacity: (name.trim() || photos.length) ? 1 : 0.4 }} onClick={create} disabled={!name.trim() && !photos.length}>Add</button>
       </div>
 
@@ -934,7 +934,7 @@ function AddScreen({ onCancel, onCreate, onHowto }) {
           <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
             onChange={e => { pickPhotos(e.target.files); e.target.value = ''; }} />
         </div>
-        <div style={S.hint}>Add screenshots of her profile &amp; chat — the app reads them automatically and fills in her details. <InfoDot onClick={() => onHowto(HOWTO.autofill)} /></div>
+        <div style={S.hint}>Add screenshots of their profile &amp; chat — the app reads them automatically and fills in her details. <InfoDot onClick={() => onHowto(HOWTO.autofill)} /></div>
 
         <div style={S.fieldLabel}>Name / handle</div>
         <input style={S.bigInput} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Nicky" autoFocus />
@@ -1272,7 +1272,7 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
               <div style={S.miScoreLbl}>match to you</div>
             </div>
             <div style={S.miVibeBlock}>
-              <div style={S.miVibeLbl}>🎨 Her vibe</div>
+              <div style={S.miVibeLbl}>🎨 Their vibe</div>
               <div style={S.miVibeVal}>{vibe && vibe.vibe ? vibe.vibe : (compat && compat.vibe ? compat.vibe : (compatBusy ? '…' : '—'))}</div>
               {isPro && compat && compat.headline ? <div style={S.miVibeNote}>{compat.headline}</div> : null}
             </div>
@@ -1360,7 +1360,7 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
             <div style={S.miLocked}>
               <div style={S.miLockedTitle}>🔒 Unlock the full playbook with Pro</div>
               <div style={S.miLockedRow}>✅ Why she matches you + do's &amp; don'ts</div>
-              <div style={S.miLockedRow}>🚩 Dealbreaker alerts from her profile</div>
+              <div style={S.miLockedRow}>🚩 Dealbreaker alerts from their profile</div>
               <div style={S.miLockedRow}>📍 All 3 date ideas — casual, upscale, beachy, priced &amp; halfway between you</div>
               <div style={S.miLockedRow}>💬 Every opener + reply coaching</div>
               <div style={S.miLockedRow}>🧠 Learns what worked on past dates</div>
@@ -1381,7 +1381,7 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         {isPro && p.photos.length > 0 && (
           <div style={S.aiToolbar}>
             <button style={S.aiChipBtn} onClick={readPhotos} disabled={reading}>{reading ? 'Reading…' : '✨ Auto-fill'}<InfoDot onClick={() => onHowto(HOWTO.autofill)} /></button>
-            <button style={S.aiChipBtn} onClick={runVibe}>🎨 Her vibe<InfoDot onClick={() => onHowto(HOWTO.vibe)} /></button>
+            <button style={S.aiChipBtn} onClick={runVibe}>🎨 Their vibe<InfoDot onClick={() => onHowto(HOWTO.vibe)} /></button>
             <button style={S.aiChipBtn} onClick={runFlags} disabled={flagsBusy}>{flagsBusy ? '…' : '🟢 Flag scan'}<InfoDot onClick={() => onHowto(HOWTO.greenflag)} /></button>
             <button style={S.aiChipBtn} onClick={runCompat} disabled={compatBusy}>{compatBusy ? '…' : '❤️ Match %'}<InfoDot onClick={() => onHowto(HOWTO.compat)} /></button>
           </div>
@@ -1394,10 +1394,10 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
           </div>
         ) : null}
 
-        {/* ask the assistant about HER — no need to leave the app */}
+        {/* ask the assistant about THEM — no need to leave the app */}
         <div style={S.askWrap}>
-          <div style={S.askTitle}>💬 Ask about her</div>
-          <div style={S.askHint}>Ask me anything or tell me to fix something — e.g. "her name is Sarah, it's in the last photo" or "what should I message her?"</div>
+          <div style={S.askTitle}>💬 Ask about them</div>
+          <div style={S.askHint}>Ask me anything or tell me to fix something — e.g. "their name is Sarah, it's in the last photo" or "what should I message her?"</div>
           {askThread.map((t, i) => (
             <div key={i} style={S.askExchange}>
               <div style={S.askQ}>{t.q}</div>
@@ -1470,7 +1470,7 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         <div style={{ height: 14 }} />
 
         {/* how/where you found her — never lose track */}
-        <div style={S.fieldLabel}>📍 How / where I found her</div>
+        <div style={S.fieldLabel}>📍 How / where I found them</div>
         <input style={S.input} value={p.origin || ''}
           placeholder="e.g. Bumble, matched Aug 12 · IG @handle · met at Balboa fireworks"
           onChange={e => onUpdate(p.id, { origin: e.target.value })} />
@@ -1578,7 +1578,7 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         </div>
 
         {/* notes */}
-        <div style={S.fieldLabel}>From her profile</div>
+        <div style={S.fieldLabel}>From their profile</div>
         <textarea style={S.textarea} value={p.profileNotes} placeholder="Bio, prompts…"
           onChange={e => onUpdate(p.id, { profileNotes: e.target.value })} />
 
@@ -1648,7 +1648,7 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
               </div>
               <div style={S.bragTier}>{(TIERS[p.tier] || TIERS[1]).label} interest</div>
             </div>
-            <div style={S.bragBrand}>tracked in Prospects</div>
+            <div style={S.bragBrand}>tracked in Options</div>
           </div>
         )}
         {brag !== null ? <div style={S.bragHint}>Screenshot this to share — her name is never shown.</div> : null}
@@ -1664,24 +1664,24 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
               {p.compat && p.compat.score != null ? <div style={{ ...S.friendCardScore, color: matchColor(p.compat.score) }}>{matchEmoji(p.compat.score)} {p.compat.score}/100 match</div> : null}
             </div>
           </div>
-          <div style={S.friendCardQ}>What do you think — should I pursue her?</div>
+          <div style={S.friendCardQ}>What do you think — should I pursue them?</div>
           <div style={S.friendCardTally}>
             <span style={{ color: '#34C759' }}>👍 {(p.friendVerdicts && p.friendVerdicts.pursue) || 0}</span>
             <span style={{ color: '#FFCC00' }}>🤔 {(p.friendVerdicts && p.friendVerdicts.meh) || 0}</span>
             <span style={{ color: '#FF3B30' }}>👎 {(p.friendVerdicts && p.friendVerdicts.pass) || 0}</span>
           </div>
-          <div style={S.bragBrand}>Prospects</div>
+          <div style={S.bragBrand}>Options</div>
         </div>
         <button style={S.shareBtn} onClick={async () => {
-          const text = 'Should I pursue her? 👍 pursue / 🤔 meh / 👎 pass';
+          const text = 'Should I pursue them? 👍 pursue / 🤔 meh / 👎 pass';
           try {
             const blob = await renderProspectCard(p);
             await shareCardBlob(blob, text);
           } catch (e) {
             try { if (navigator.share) await navigator.share({ text }); } catch (e2) {}
           }
-        }}>📤 Share her card</button>
-        <div style={S.bragHint}>Makes a clean image card (her real profile photos + basic stats + a vote prompt) and opens your share sheet. 🔒 Chat screenshots, her messages, and your notes are never included. Tap friends' votes into the 👥 buttons above.</div>
+        }}>📤 Share their card</button>
+        <div style={S.bragHint}>Makes a clean image card (her real profile photos + basic stats + a vote prompt) and opens your share sheet. 🔒 Chat screenshots, their messages, and your notes are never included. Tap friends' votes into the 👥 buttons above.</div>
         <div style={{ height: 8 }} />
 
         <div style={S.myNotesLabel}>🎤 My notes (tap the mic on your keyboard to talk)</div>
@@ -1898,12 +1898,12 @@ async function renderProspectCard(p) {
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 56px -apple-system, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('Should I pursue her?', W / 2, 1120);
+  ctx.fillText('Should I pursue them?', W / 2, 1120);
   ctx.font = '52px -apple-system, sans-serif';
   ctx.fillText('👍 pursue    🤔 meh    👎 pass', W / 2, 1200);
   ctx.fillStyle = '#5E5CE6';
   ctx.font = 'bold 36px -apple-system, sans-serif';
-  ctx.fillText('Prospects', W / 2, 1290);
+  ctx.fillText('Options', W / 2, 1290);
 
   return await new Promise(res => canvas.toBlob(b => res(b), 'image/png', 0.92));
 }
@@ -1978,7 +1978,7 @@ async function renderPyramidCard(ordered) {
     y += cell + 30 + rowGap;
   }
   ctx.fillStyle = '#5E5CE6'; ctx.font = 'bold 34px -apple-system, sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('Prospects', W / 2, canvas.height - 30);
+  ctx.fillText('Options', W / 2, canvas.height - 30);
   return await new Promise(res => canvas.toBlob(b => res(b), 'image/png', 0.92));
 }
 
@@ -2150,7 +2150,7 @@ function PrefsModal({ onClose, onSaved }) {
       <div style={S.prefs} onClick={e => e.stopPropagation()}>
         <div style={S.sheetHandle} />
         <div style={S.prefsTitle}>🎯 My type</div>
-        <div style={S.prefsSub}>Tell me what you're looking for and what turns you off. The more you share, the sharper I can score each prospect and flag her profile for you. This is private, saved on your device, and you can change it anytime.</div>
+        <div style={S.prefsSub}>Tell me what you're looking for and what turns you off. The more you share, the sharper I can score each prospect and flag their profile for you. This is private, saved on your device, and you can change it anytime.</div>
         {!loaded ? <div style={S.prefsExample}>Loading…</div> : (
           <textarea style={S.prefsInput} value={desc} placeholder="e.g. I'm 60, active and fit, into an age range around 40-50. I dislike snooty/high-maintenance profiles — fancy cars, designer bags, Michelin-only. I love dogs, family, women with older kids..."
             onChange={e => setDesc(e.target.value)} autoFocus />
@@ -2237,7 +2237,7 @@ function Pyramid({ people, onClose, onOpen, onReorder }) {
               })}
             </div>
           ))}
-          {ordered.length === 0 ? <div style={S.pyramidEmpty}>Add prospects to see your pyramid.</div> : null}
+          {ordered.length === 0 ? <div style={S.pyramidEmpty}>Add options to see your pyramid.</div> : null}
         </div>
         <div style={S.pyramidDragHint}>Drag a card onto another to move it there. Deleted prospects appear dimmed.</div>
 
@@ -2264,7 +2264,7 @@ function Pyramid({ people, onClose, onOpen, onReorder }) {
             } catch (e) {}
           } catch (e) {} finally { setPubBusy(false); }
         }}>{pubBusy ? 'Publishing…' : '📤 Share for friends to rank'}</button>
-        <div style={S.privacyNote}>🔒 All her real profile photos are shared — chat screenshots (flagged 💬 orange) are automatically excluded, so her messages stay private. Keep shared links to people you trust.</div>
+        <div style={S.privacyNote}>🔒 All their real profile photos are shared — chat screenshots (flagged 💬 orange) are automatically excluded, so their messages stay private. Keep shared links to people you trust.</div>
 
         {shareUrl ? <div style={S.shareLinkBox}>Live link: <span style={{ color: '#0A84FF' }}>{shareUrl}</span><br/>Friends open it, drag your pyramid into their order, and send it back.</div> : null}
 
@@ -2402,7 +2402,7 @@ function Wrapped({ people, onClose }) {
         </div>
         <div style={S.wrappedRow}>🏆 Best night: {best ? `${best.place || best.when || 'a date'} (${best.score}/10)` : 'log a date to see this'}</div>
         <div style={S.wrappedRow}>📱 Your app of choice: {topApp}</div>
-        <div style={S.wrappedBrand}>Prospects · screenshot to share</div>
+        <div style={S.wrappedBrand}>Options · screenshot to share</div>
         <button style={S.howtoBtn} onClick={onClose}>Close</button>
       </div>
     </div>
