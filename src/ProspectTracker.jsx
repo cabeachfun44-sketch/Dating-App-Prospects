@@ -1,4 +1,4 @@
-// ==================== VERSION 14 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 16 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sget, sset, sdel, storageMode as cloudStorageMode, sgetAllPersons } from './storage.js';
 
@@ -152,6 +152,7 @@ function blankPerson(name) {
     friendVerdicts: { pursue: 0, meh: 0, pass: 0 }, // friend poll tally
     friendComments: [],      // [{who, text}]
     timeline: [],            // [{when, text}] activity log
+    chatPhotos: [],          // photo data strings that are chat screenshots — never shared
     status: 'new',
     nextStep: '',
     contact: '',
@@ -213,9 +214,19 @@ function parseJSON(raw) {
   throw new Error('Could not parse response');
 }
 
+// Detect which of these photos are chat/message screenshots. Returns array of 0-based indexes.
+async function detectChats(photos) {
+  if (!photos || !photos.length) return [];
+  const prompt = 'Look at these images, numbered from 0. Some are a woman\'s dating PROFILE PHOTOS (pictures of her, places, activities) and some are CHAT/MESSAGE screenshots (conversation threads, message bubbles, text exchanges, an app chat interface). Return ONLY a raw JSON object: {"chatIndexes":[list of 0-based indexes that are chat/message screenshots]}. Be thorough — flag EVERY chat screenshot. Empty array if none are chats.';
+  try {
+    const r = await askJSON(prompt, photos, 300);
+    return Array.isArray(r.chatIndexes) ? r.chatIndexes : [];
+  } catch (e) { return []; }
+}
+
 async function readProfileWithAI(photos) {
   if (!photos || !photos.length) return null;
-  const instructions = 'These are screenshots from a dating app, numbered starting at 0. They may include her profile AND chat threads between her and the user (his messages are the colored/right-side bubbles; hers are the gray/left-side bubbles). Read EVERYTHING carefully — profile bio, prompts, stat pills, and every chat bubble — and extract every useful fact about HER.\n\nIDENTIFY THE APP — it is ALWAYS one of exactly three: Hinge, Bumble, or Tinder. Never pick anything else. Decide by the interface:\n- BUMBLE: sent (your) messages are YELLOW bubbles, received are light gray; the message input bar shows \"Aa\" with a GIF button; header shows her name with phone/video icons. Yellow bubbles = Bumble.\n- HINGE: messages attach to a specific profile prompt or photo (a small quoted prompt/photo sits above the comment); sent bubbles are muted purple/blue-gray on white.\n- TINDER: sent bubbles are a blue-to-pink gradient (or solid blue); very minimal chat UI.\nPick the single best of Hinge/Bumble/Tinder. If genuinely unsure, pick the closest match — never leave it blank and never invent another app.\n\nReturn ONLY a raw JSON object, no markdown, with keys: "name" (her first name as shown; "" if not visible), "app" (your best identification from above — do NOT leave blank if you can infer it), "age", "livesIn" (city she states anywhere, including in chat), "hometown", "height", "drinks", "kids" (if she mentions kids at all, summarize e.g. "Has school-age kids, has them on weekends"), "religion", "firstMove" (who sent first message/like; "" if unknown), \"phone\" (her phone number ONLY if she typed one in the chat; \"\" if none), "vibe" (2-4 word aesthetic label for her, e.g. "Beachy SoCal mom", "Polished nightlife"), "profileNotes" (3-6 sentences capturing her life, personality, and everything notable she revealed — kids, pets, homebody vs social, what she wants, her humor, anything from her bio and chats), "pets" (e.g. "Dog named Hurley" or ""), "details" (array of MANY short {"cat","text"} objects — capture everything worth remembering, cat one of Kids/Sports/Likes/Dislikes/"She said"/Note; aim for 5-10 items when the screenshots are rich), "mainPhotoIndex" (0-based index of the best clear photo OF HER FACE; prefer a real photo over a chat screenshot; if unsure use 0). Use "" or [] for anything not found. Read closely — capture as much as a thoughtful user would.';
+  const instructions = 'These are screenshots from a dating app, numbered starting at 0. They may include her profile AND chat threads between her and the user (his messages are the colored/right-side bubbles; hers are the gray/left-side bubbles). Read EVERYTHING carefully — profile bio, prompts, stat pills, and every chat bubble — and extract every useful fact about HER.\n\nIDENTIFY THE APP — it is ALWAYS one of exactly three: Hinge, Bumble, or Tinder. Never pick anything else. Decide by the interface:\n- BUMBLE: sent (your) messages are YELLOW bubbles, received are light gray; the message input bar shows \"Aa\" with a GIF button; header shows her name with phone/video icons. Yellow bubbles = Bumble.\n- HINGE: messages attach to a specific profile prompt or photo (a small quoted prompt/photo sits above the comment); sent bubbles are muted purple/blue-gray on white.\n- TINDER: sent bubbles are a blue-to-pink gradient (or solid blue); very minimal chat UI.\nPick the single best of Hinge/Bumble/Tinder. If genuinely unsure, pick the closest match — never leave it blank and never invent another app.\n\nReturn ONLY a raw JSON object, no markdown, with keys: "name" (her first name as shown; "" if not visible), "app" (your best identification from above — do NOT leave blank if you can infer it), "age", "livesIn" (city she states anywhere, including in chat), "hometown", "height", "drinks", "kids" (if she mentions kids at all, summarize e.g. "Has school-age kids, has them on weekends"), "religion", "firstMove" (who sent first message/like; "" if unknown), \"phone\" (her phone number ONLY if she typed one in the chat; \"\" if none), "vibe" (2-4 word aesthetic label for her, e.g. "Beachy SoCal mom", "Polished nightlife"), "profileNotes" (3-6 sentences capturing her life, personality, and everything notable she revealed — kids, pets, homebody vs social, what she wants, her humor, anything from her bio and chats), "pets" (e.g. "Dog named Hurley" or ""), "details" (array of MANY short {"cat","text"} objects — capture everything worth remembering, cat one of Kids/Sports/Likes/Dislikes/"She said"/Note; aim for 5-10 items when the screenshots are rich), "chatIndexes" (array of 0-based indexes of any images that are CHAT/MESSAGE screenshots — conversation threads, message bubbles, text exchanges — as opposed to her actual profile photos; be thorough, flag EVERY chat screenshot; empty array if none), "mainPhotoIndex" (0-based index of the best clear photo OF HER FACE; prefer a real photo over a chat screenshot; if unsure use 0). Use "" or [] for anything not found. Read closely — capture as much as a thoughtful user would.';
   return askJSON(instructions, photos, 2500);
 }
 
@@ -505,6 +516,7 @@ export default function ProspectTracker() {
         if (!p.friendVerdicts) p.friendVerdicts = { pursue: 0, meh: 0, pass: 0 };
         if (!p.friendComments) p.friendComments = [];
         if (!p.timeline) p.timeline = [];
+        if (!p.chatPhotos) p.chatPhotos = [];
         // one-time cleanup: the original seed-Nicky shipped with placeholder photos
         // that were not actually her. Remove them from the stored copy, once.
         if (p.id === 'seed-nicky' && !p._photoFix) {
@@ -742,7 +754,7 @@ export default function ProspectTracker() {
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v14</span></div>
+        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v16</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
@@ -1090,6 +1102,17 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         finally { setReading(false); }
       }
 
+      // CLEANUP: if she has photos but chat screenshots were never flagged, scan once.
+      // This fixes prospects added before chat-detection existed — no redo needed.
+      if (cur.photos && cur.photos.length && !(cur.chatPhotos && cur.chatPhotos.length) && !cur._chatScanned) {
+        try {
+          const idxs = await detectChats(cur.photos);
+          const flagged = idxs.map(i => cur.photos[parseInt(i, 10)]).filter(Boolean);
+          onUpdate(p.id, { chatPhotos: flagged, _chatScanned: true });
+          cur = { ...cur, chatPhotos: flagged, _chatScanned: true };
+        } catch (e) {}
+      }
+
       const wantSig = matchSig(desc, cur);
       const stale = !cur.compat || cur.compat.free || cur.compat.score == null || cur.compat.sig !== wantSig;
 
@@ -1205,21 +1228,31 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
       <div style={S.detailBody}>
         {/* photos first */}
         <div style={S.photoStrip}>
-          {p.photos.map((src, i) => (
-            <div key={i} style={S.stripItem}>
-              <img src={src} style={S.stripImg} alt="" onClick={() => setViewer(i)} />
-              <button style={S.stripDel} onClick={(e) => {
-                e.stopPropagation();
-                const next = p.photos.slice(); next.splice(i, 1);
-                onUpdate(p.id, { photos: next });
-              }}>×</button>
-            </div>
-          ))}
+          {p.photos.map((src, i) => {
+            const isChat = (p.chatPhotos || []).includes(src);
+            return (
+              <div key={i} style={S.stripItem}>
+                <img src={src} style={{ ...S.stripImg, ...(isChat ? { opacity: 0.5, outline: '2px solid #FF9F0A' } : {}) }} alt="" onClick={() => setViewer(i)} />
+                <button style={S.stripDel} onClick={(e) => {
+                  e.stopPropagation();
+                  const next = p.photos.slice(); next.splice(i, 1);
+                  const cp = (p.chatPhotos || []).filter(x => x !== src);
+                  onUpdate(p.id, { photos: next, chatPhotos: cp });
+                }}>×</button>
+                <button style={{ ...S.chatFlag, background: isChat ? '#FF9F0A' : 'rgba(0,0,0,0.6)' }} onClick={(e) => {
+                  e.stopPropagation();
+                  const cur = new Set(p.chatPhotos || []);
+                  if (cur.has(src)) cur.delete(src); else cur.add(src);
+                  onUpdate(p.id, { chatPhotos: Array.from(cur) });
+                }}>{isChat ? '💬 chat' : 'mark chat'}</button>
+              </div>
+            );
+          })}
           <button style={S.stripAdd} onClick={() => fileRef.current && fileRef.current.click()}>+</button>
           <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
             onChange={e => { addPhotos(e.target.files); e.target.value = ''; }} />
         </div>
-        <div style={S.multiHint}>Tap + then <b>Select</b> to add all her screenshots at once — no need to add them one by one.</div>
+        <div style={S.multiHint}>Tap + then <b>Select</b> to add all her screenshots at once. 🔒 Chat screenshots are auto-flagged (orange 💬) and never shared — tap a photo's flag to change it.</div>
 
         {/* ===== MATCH INTELLIGENCE — the hero panel ===== */}
         <div style={isPro ? S.miPro : S.miFree}>
@@ -1624,7 +1657,7 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         <div style={S.sectionLabel}>🗳️ "Should I pursue?" card</div>
         <div style={S.friendCard}>
           <div style={S.friendCardTop}>
-            {p.photos[0] ? <img src={p.photos[0]} style={S.friendCardImg} alt="" /> : <div style={S.friendCardImgBlank}>{(p.name || '?')[0].toUpperCase()}</div>}
+            {nonChatPhotos(p)[0] ? <img src={nonChatPhotos(p)[0]} style={S.friendCardImg} alt="" /> : <div style={S.friendCardImgBlank}>{(p.name || '?')[0].toUpperCase()}</div>}
             <div>
               <div style={S.friendCardName}>{p.name || 'Prospect'}{p.facts.age ? ', ' + p.facts.age : ''}</div>
               <div style={S.friendCardMeta}>{p.facts.livesIn || ''}{p.app ? ' · ' + p.app : ''}</div>
@@ -1648,7 +1681,7 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
             try { if (navigator.share) await navigator.share({ text }); } catch (e2) {}
           }
         }}>📤 Share her card</button>
-        <div style={S.bragHint}>Makes a fun image card (up to 4 of her pics + her stats + a vote prompt) and opens your share sheet — text it to friends. Tap their votes into the 👥 buttons above.</div>
+        <div style={S.bragHint}>Makes a clean image card (her real profile photos + basic stats + a vote prompt) and opens your share sheet. 🔒 Chat screenshots, her messages, and your notes are never included. Tap friends' votes into the 👥 buttons above.</div>
         <div style={{ height: 8 }} />
 
         <div style={S.myNotesLabel}>🎤 My notes (tap the mic on your keyboard to talk)</div>
@@ -1727,14 +1760,32 @@ function applyRead(p, r) {
   }
   if (r.pets && !seen.has(('note|' + r.pets).toLowerCase())) add.push({ cat: 'Note', text: r.pets });
   if (add.length) patch.details = [...existing, ...add];
-  // main photo to front
-  const mi = parseInt(r.mainPhotoIndex, 10);
-  if (!isNaN(mi) && mi > 0 && mi < (p.photos || []).length) {
-    const reordered = p.photos.slice();
+  // Flag which photos are chat screenshots (store by data string so it survives reordering)
+  const photosNow = p.photos || [];
+  if (Array.isArray(r.chatIndexes) && r.chatIndexes.length) {
+    const flagged = new Set(p.chatPhotos || []);
+    r.chatIndexes.forEach(ix => {
+      const n = parseInt(ix, 10);
+      if (!isNaN(n) && n >= 0 && n < photosNow.length) flagged.add(photosNow[n]);
+    });
+    patch.chatPhotos = Array.from(flagged);
+  }
+  // main photo to front — but never pick a chat screenshot as main
+  const chatSet = new Set(patch.chatPhotos || p.chatPhotos || []);
+  let mi = parseInt(r.mainPhotoIndex, 10);
+  if (!isNaN(mi) && mi >= 0 && mi < photosNow.length && chatSet.has(photosNow[mi])) mi = NaN; // don't front a chat
+  if (!isNaN(mi) && mi > 0 && mi < photosNow.length) {
+    const reordered = photosNow.slice();
     const [main] = reordered.splice(mi, 1); reordered.unshift(main);
     patch.photos = reordered;
   }
   return patch;
+}
+
+// Her photos with any chat screenshots removed — the ONLY photos safe to share.
+function nonChatPhotos(p) {
+  const chat = new Set(p.chatPhotos || []);
+  return (p.photos || []).filter(src => !chat.has(src));
 }
 
 function scoreColor(score) {
@@ -1777,7 +1828,8 @@ async function renderProspectCard(p) {
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 
   // photo collage (up to 4)
-  const pics = (p.photos || []).slice(0, 4);
+  // PRIVACY: her real profile photos only — chat screenshots are excluded.
+  const pics = nonChatPhotos(p).slice(0, 4);
   const imgs = [];
   for (const src of pics) { const im = await loadImg(src); if (im) imgs.push(im); }
   const gridX = 60, gridY = 60, gridW = W - 120, gridH = 720, gap = 12;
@@ -2156,7 +2208,8 @@ function Pyramid({ people, onClose, onOpen, onReorder }) {
             // build a compact snapshot (limit photos to keep it small)
             const snapshot = {
               owner: 'a friend',
-              people: ordered.map(p => ({ id: p.id, name: p.name || '—', photos: (p.photos || []).slice(0, 4) })),
+              // PRIVACY: all her real profile photos are shared, but NEVER chat screenshots.
+              people: ordered.map(p => ({ id: p.id, name: p.name || '—', photos: nonChatPhotos(p).slice(0, 6) })),
             };
             let sid = shareId;
             if (!sid) { sid = Math.random().toString(36).slice(2, 10); setShareId(sid); }
@@ -2170,6 +2223,7 @@ function Pyramid({ people, onClose, onOpen, onReorder }) {
             } catch (e) {}
           } catch (e) {} finally { setPubBusy(false); }
         }}>{pubBusy ? 'Publishing…' : '📤 Share for friends to rank'}</button>
+        <div style={S.privacyNote}>🔒 All her real profile photos are shared — chat screenshots (flagged 💬 orange) are automatically excluded, so her messages stay private. Keep shared links to people you trust.</div>
 
         {shareUrl ? <div style={S.shareLinkBox}>Live link: <span style={{ color: '#0A84FF' }}>{shareUrl}</span><br/>Friends open it, drag your pyramid into their order, and send it back.</div> : null}
 
@@ -2501,6 +2555,7 @@ const S = {
   viewTabOn: { background: '#0A84FF', color: '#fff', borderColor: '#0A84FF' },
   rankHint: { fontSize: 12, color: '#8e8e93', marginTop: 5, lineHeight: 1.4 },
   shareLinkBox: { fontSize: 12.5, color: '#c7c7cc', background: '#141416', border: '1px solid #2c2c2e', borderRadius: 12, padding: 12, marginTop: 10, lineHeight: 1.5, wordBreak: 'break-all' },
+  privacyNote: { fontSize: 11.5, color: '#8e8e93', marginTop: 8, lineHeight: 1.5, background: 'rgba(52,199,89,0.08)', border: '1px solid rgba(52,199,89,0.25)', borderRadius: 10, padding: '9px 11px' },
   ranksBox: { marginTop: 12 },
   rankSubmission: { background: '#141416', borderRadius: 12, padding: 12, marginBottom: 8 },
   rankWho: { fontSize: 14, fontWeight: 700, color: '#5E5CE6', marginBottom: 4 },
@@ -2612,6 +2667,7 @@ const S = {
   stripImg: { width: 72, height: 72, objectFit: 'cover', borderRadius: 12, flexShrink: 0, cursor: 'pointer' },
   stripItem: { position: 'relative', flexShrink: 0 },
   stripDel: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, background: '#FF3B30', color: '#fff', border: '2px solid #000', fontSize: 13, lineHeight: '18px', cursor: 'pointer', padding: 0 },
+  chatFlag: { position: 'absolute', bottom: 4, left: 4, right: 4, color: '#fff', border: 'none', borderRadius: 6, fontSize: 9, fontWeight: 800, padding: '3px 0', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: 0.3 },
   stripAdd: { width: 72, height: 72, borderRadius: 12, border: '2px dashed #3a3a3c', background: '#1c1c1e', color: '#0A84FF', fontSize: 28, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' },
   hint: { fontSize: 13, color: '#8e8e93', marginBottom: 22, lineHeight: 1.4 },
 
