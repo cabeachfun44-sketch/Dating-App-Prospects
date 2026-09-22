@@ -1,4 +1,4 @@
-// ==================== VERSION 17 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 18 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sget, sset, sdel, storageMode as cloudStorageMode, sgetAllPersons } from './storage.js';
 
@@ -754,7 +754,7 @@ export default function ProspectTracker() {
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v17</span></div>
+        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v18</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
@@ -1788,6 +1788,33 @@ function nonChatPhotos(p) {
   return (p.photos || []).filter(src => !chat.has(src));
 }
 
+// Shrink a data-URI photo to a small thumbnail so shared snapshots stay tiny.
+function shrinkPhoto(src, maxDim) {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.onerror = () => resolve(src);
+      img.src = src;
+    } catch (e) { resolve(src); }
+  });
+}
+
+async function thumbsForShare(photos, maxCount, maxDim) {
+  const out = [];
+  for (const src of (photos || []).slice(0, maxCount)) {
+    out.push(await shrinkPhoto(src, maxDim));
+  }
+  return out;
+}
+
 function scoreColor(score) {
   const n = parseInt(score, 10) || 0;
   if (n >= 8) return '#34C759';
@@ -2217,12 +2244,13 @@ function Pyramid({ people, onClose, onOpen, onReorder }) {
         <button style={S.shareBtn} onClick={async () => {
           try {
             setPubBusy(true);
-            // build a compact snapshot (limit photos to keep it small)
-            const snapshot = {
-              owner: 'a friend',
-              // PRIVACY: all her real profile photos are shared, but NEVER chat screenshots.
-              people: ordered.map(p => ({ id: p.id, name: p.name || '—', photos: nonChatPhotos(p).slice(0, 6) })),
-            };
+            // build a compact snapshot with SMALL thumbnails so it fits in the database
+            const peopleThumbs = [];
+            for (const p of ordered) {
+              const thumbs = await thumbsForShare(nonChatPhotos(p), 3, 220);
+              peopleThumbs.push({ id: p.id, name: p.name || '—', photos: thumbs });
+            }
+            const snapshot = { owner: 'a friend', people: peopleThumbs };
             let sid = shareId;
             if (!sid) { sid = Math.random().toString(36).slice(2, 10); setShareId(sid); }
             await sset('share_' + sid, snapshot);
