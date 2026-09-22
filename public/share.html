@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="supa-url" content="https://trhwxmuyxwnkoblbruos.supabase.co">
+<meta name="supa-key" content="sb_publishable_Kd-OTZx2pq9MaYlKcrB3fg_WeEiweuR">
+<title>Rank the Pyramid</title>
+<style>
+  :root{ --bg:#000; --card:#1c1c1e; --line:#2c2c2e; --accent:#5E5CE6; --gold:#FFCC00; }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh;padding-bottom:120px}
+  .wrap{max-width:520px;margin:0 auto;padding:20px 16px}
+  h1{font-size:26px;font-weight:900;text-align:center;margin-bottom:4px}
+  .sub{font-size:14px;color:#8e8e93;text-align:center;margin-bottom:18px;line-height:1.4}
+  .loading{text-align:center;color:#8e8e93;padding:60px 0}
+  .namebar{display:flex;gap:8px;margin-bottom:16px}
+  .namebar input{flex:1;background:var(--card);border:1px solid var(--line);color:#fff;border-radius:11px;padding:12px 14px;font-size:15px;outline:none;font-family:inherit}
+  .pyramid{display:flex;flex-direction:column;gap:12px;align-items:center;margin-bottom:20px}
+  .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  .card{width:78px;border-radius:14px;border:2px solid var(--accent);background:var(--card);padding:6px;text-align:center;cursor:grab;touch-action:none;transition:transform .12s,opacity .12s}
+  .card.dragging{opacity:.5;transform:scale(1.08)}
+  .card.over{outline:2px dashed var(--gold)}
+  .card img{width:64px;height:64px;border-radius:10px;object-fit:cover;display:block;margin:0 auto;pointer-events:none}
+  .card .blank{width:64px;height:64px;border-radius:10px;background:#2c2c2e;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:#8e8e93;margin:0 auto}
+  .card .nm{font-size:11px;font-weight:700;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .rk{font-size:12px;font-weight:900;color:var(--gold)}
+  .hint{font-size:12.5px;color:#8e8e93;text-align:center;margin-bottom:16px;line-height:1.4}
+  .submit{position:fixed;left:0;right:0;bottom:0;padding:16px;background:linear-gradient(transparent,#000 30%)}
+  .submit .inner{max-width:520px;margin:0 auto}
+  .submit button{width:100%;background:linear-gradient(135deg,#0A84FF,#5E5CE6);color:#fff;border:none;border-radius:14px;padding:16px;font-size:17px;font-weight:800;cursor:pointer}
+  .cta{background:#141416;border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:20px;text-align:center}
+  .cta a{color:#0A84FF;font-weight:700;text-decoration:none}
+  .viewer{position:fixed;inset:0;background:rgba(0,0,0,.95);display:none;align-items:center;justify-content:center;z-index:50}
+  .viewer.on{display:flex}
+  .viewer img{max-width:92%;max-height:80%;object-fit:contain;border-radius:12px}
+  .viewer .x{position:absolute;top:20px;right:20px;background:rgba(255,255,255,.18);border:none;color:#fff;width:44px;height:44px;border-radius:22px;font-size:24px;cursor:pointer}
+  .viewer .nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.18);border:none;color:#fff;width:48px;height:48px;border-radius:24px;font-size:26px;cursor:pointer}
+  .viewer .prev{left:12px} .viewer .next{right:12px}
+  .viewer .cap{position:absolute;bottom:30px;left:0;right:0;text-align:center;font-size:15px;font-weight:700}
+  .done{text-align:center;padding:50px 20px}
+  .done h2{font-size:24px;margin-bottom:10px}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="loading">Loading his lineup…</div></div>
+<div class="viewer" id="viewer">
+  <button class="x" id="vx">×</button>
+  <button class="nav prev" id="vprev">‹</button>
+  <img id="vimg" alt="">
+  <button class="nav next" id="vnext">›</button>
+  <div class="cap" id="vcap"></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+(async function(){
+  var app = document.getElementById('app');
+  var SUPA_URL="", SUPA_KEY="";
+  var mu=document.querySelector('meta[name="supa-url"]'); if(mu) SUPA_URL=mu.content;
+  var mk=document.querySelector('meta[name="supa-key"]'); if(mk) SUPA_KEY=mk.content;
+  var params=new URLSearchParams(location.search); var shareId=params.get('p');
+  if(!shareId||!SUPA_URL||!SUPA_KEY){ app.innerHTML='<div class="loading">This link is missing its data. Ask your friend to re-share.</div>'; return; }
+  var sb=supabase.createClient(SUPA_URL,SUPA_KEY);
+  var res=await sb.from('kv').select('value').eq('k','share_'+shareId).maybeSingle();
+  if(!res.data||!res.data.value){ app.innerHTML='<div class="loading">Couldn\'t find this pyramid. The link may have expired.</div>'; return; }
+  var data=res.data.value; var people=(data.people||[]).slice(); var owner=data.owner||'your friend';
+  render();
+  function render(){
+    app.innerHTML='';
+    var h=document.createElement('h1'); h.textContent='Rank '+owner+'\'s lineup'; app.appendChild(h);
+    var s=document.createElement('div'); s.className='sub'; s.textContent='Drag the women into the order YOU think he should pursue. Tap any photo to see more.'; app.appendChild(s);
+    var nb=document.createElement('div'); nb.className='namebar';
+    var ni=document.createElement('input'); ni.id='who'; ni.placeholder='Your name (so he knows who ranked)'; nb.appendChild(ni); app.appendChild(nb);
+    var pyr=document.createElement('div'); pyr.className='pyramid'; pyr.id='pyr'; app.appendChild(pyr); layout(pyr);
+    var hint=document.createElement('div'); hint.className='hint'; hint.textContent='Long-press and drag to move someone. Top = pursue first.'; app.appendChild(hint);
+    var cta=document.createElement('div'); cta.className='cta'; cta.innerHTML='Want your own? <a href="/">Get the Prospects app →</a>'; app.appendChild(cta);
+    var sub=document.createElement('div'); sub.className='submit'; sub.innerHTML='<div class="inner"><button id="send">Send my ranking to '+owner+'</button></div>'; document.body.appendChild(sub);
+    document.getElementById('send').onclick=submit;
+  }
+  function layout(pyr){
+    pyr.innerHTML=''; var idx=0,size=1;
+    while(idx<people.length){
+      var row=document.createElement('div'); row.className='row'; var slice=people.slice(idx,idx+size);
+      slice.forEach(function(p){
+        var c=document.createElement('div'); c.className='card'; c.draggable=true; c.dataset.id=p.id;
+        var rank=people.indexOf(p)+1;
+        var photo=(p.photos&&p.photos[0])?'<img src="'+p.photos[0]+'">':'<div class="blank">'+((p.name||'?')[0].toUpperCase())+'</div>';
+        c.innerHTML=photo+'<div class="nm">'+(p.name||'—')+'</div><div class="rk">#'+rank+'</div>';
+        var imgEl=c.querySelector('img'); if(imgEl){imgEl.style.pointerEvents='auto';imgEl.onclick=function(e){e.stopPropagation();openViewer(p);};}
+        wireDrag(c); row.appendChild(c);
+      });
+      pyr.appendChild(row); idx+=size; size++;
+    }
+  }
+  var dragId=null;
+  function wireDrag(c){
+    c.addEventListener('dragstart',function(){dragId=c.dataset.id;c.classList.add('dragging');});
+    c.addEventListener('dragend',function(){c.classList.remove('dragging');dragId=null;});
+    c.addEventListener('dragover',function(e){e.preventDefault();c.classList.add('over');});
+    c.addEventListener('dragleave',function(){c.classList.remove('over');});
+    c.addEventListener('drop',function(e){e.preventDefault();c.classList.remove('over');moveBefore(dragId,c.dataset.id);});
+    c.addEventListener('touchstart',function(){dragId=c.dataset.id;c.classList.add('dragging');},{passive:true});
+    c.addEventListener('touchend',function(e){c.classList.remove('dragging');var t=e.changedTouches[0];var el=document.elementFromPoint(t.clientX,t.clientY);var card=el&&el.closest?el.closest('.card'):null;if(card&&card.dataset.id){moveBefore(dragId,card.dataset.id);}dragId=null;});
+  }
+  function moveBefore(dg,target){
+    if(!dg||dg===target)return;
+    var di=people.findIndex(function(p){return p.id===dg;}); var ti=people.findIndex(function(p){return p.id===target;});
+    if(di<0||ti<0)return;
+    var m=people.splice(di,1)[0]; var newTi=people.findIndex(function(p){return p.id===target;});
+    people.splice(newTi,0,m); layout(document.getElementById('pyr'));
+  }
+  var vi=0,vPhotos=[],vName='';
+  var viewer=document.getElementById('viewer'),vimg=document.getElementById('vimg'),vcap=document.getElementById('vcap');
+  function openViewer(p){vPhotos=p.photos||[];vName=p.name||'';vi=0;if(!vPhotos.length)return;show();viewer.classList.add('on');}
+  function show(){vimg.src=vPhotos[vi];vcap.textContent=vName+' ('+(vi+1)+'/'+vPhotos.length+')';}
+  document.getElementById('vx').onclick=function(){viewer.classList.remove('on');};
+  document.getElementById('vprev').onclick=function(){vi=(vi-1+vPhotos.length)%vPhotos.length;show();};
+  document.getElementById('vnext').onclick=function(){vi=(vi+1)%vPhotos.length;show();};
+  async function submit(){
+    var who=(document.getElementById('who')||{}).value||'A friend';
+    var ranking=people.map(function(p,i){return {id:p.id,name:p.name,rank:i+1};});
+    var key='ranks_'+shareId;
+    var cur=await sb.from('kv').select('value').eq('k',key).maybeSingle();
+    var arr=(cur.data&&cur.data.value)?cur.data.value:[];
+    arr.push({who:who,ranking:ranking,at:new Date().toISOString()});
+    await sb.from('kv').upsert({k:key,value:arr},{onConflict:'k'});
+    document.querySelector('.submit').style.display='none';
+    app.innerHTML='<div class="done"><h2>Sent! 🎉</h2><p style="color:#8e8e93">'+owner+' will see your ranking in the app. Thanks for the help.</p><div class="cta" style="margin-top:24px">Want to track your own dating life? <a href="/">Get Prospects →</a></div></div>';
+  }
+})();
+</script>
+</body>
+</html>
