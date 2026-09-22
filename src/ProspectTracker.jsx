@@ -1,4 +1,4 @@
-// ==================== VERSION 13 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 14 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sget, sset, sdel, storageMode as cloudStorageMode, sgetAllPersons } from './storage.js';
 
@@ -742,7 +742,7 @@ export default function ProspectTracker() {
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v13</span></div>
+        <div style={S.title}>Prospects <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v14</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
@@ -2088,6 +2088,11 @@ function Pyramid({ people, onClose, onOpen, onReorder }) {
   // EVERYONE (including hold/planning/deleted), in current rank/array order.
   const [order, setOrder] = React.useState(people.map(p => p.id));
   const [dragId, setDragId] = React.useState(null);
+  const [pubBusy, setPubBusy] = React.useState(false);
+  const [shareId, setShareId] = React.useState(null);
+  const [shareUrl, setShareUrl] = React.useState('');
+  const [ranksBusy, setRanksBusy] = React.useState(false);
+  const [friendRanks, setFriendRanks] = React.useState(null);
   const byId = {}; people.forEach(p => { byId[p.id] = p; });
   const ordered = order.map(id => byId[id]).filter(Boolean);
 
@@ -2144,12 +2149,47 @@ function Pyramid({ people, onClose, onOpen, onReorder }) {
           {ordered.length === 0 ? <div style={S.pyramidEmpty}>Add prospects to see your pyramid.</div> : null}
         </div>
         <div style={S.pyramidDragHint}>Drag a card onto another to move it there. Deleted prospects appear dimmed.</div>
+
         <button style={S.shareBtn} onClick={async () => {
           try {
-            const blob = await renderPyramidCard(ordered);
-            await shareCardBlob(blob, 'My prospect pyramid — who belongs on top? 👀');
-          } catch (e) {}
-        }}>📤 Share my pyramid</button>
+            setPubBusy(true);
+            // build a compact snapshot (limit photos to keep it small)
+            const snapshot = {
+              owner: 'a friend',
+              people: ordered.map(p => ({ id: p.id, name: p.name || '—', photos: (p.photos || []).slice(0, 4) })),
+            };
+            let sid = shareId;
+            if (!sid) { sid = Math.random().toString(36).slice(2, 10); setShareId(sid); }
+            await sset('share_' + sid, snapshot);
+            const link = window.location.origin + '/share.html?p=' + sid;
+            setShareUrl(link);
+            const text = 'Rank my dating lineup — drag them into who I should pursue 👀\n' + link;
+            try {
+              if (navigator.share) { await navigator.share({ text, url: link }); }
+              else { await navigator.clipboard.writeText(link); alert('Link copied! Text it to your friends.'); }
+            } catch (e) {}
+          } catch (e) {} finally { setPubBusy(false); }
+        }}>{pubBusy ? 'Publishing…' : '📤 Share for friends to rank'}</button>
+
+        {shareUrl ? <div style={S.shareLinkBox}>Live link: <span style={{ color: '#0A84FF' }}>{shareUrl}</span><br/>Friends open it, drag your pyramid into their order, and send it back.</div> : null}
+
+        <button style={{ ...S.readBtn, marginTop: 8 }} onClick={async () => {
+          if (!shareId) { alert('Share your pyramid first, then friends\' rankings show up here.'); return; }
+          setRanksBusy(true);
+          try { const r = await sget('ranks_' + shareId); setFriendRanks(Array.isArray(r) ? r : []); } catch (e) {} finally { setRanksBusy(false); }
+        }}>{ranksBusy ? 'Checking…' : '👥 See friends\' rankings'}</button>
+
+        {friendRanks && friendRanks.length ? (
+          <div style={S.ranksBox}>
+            {friendRanks.map((fr, i) => (
+              <div key={i} style={S.rankSubmission}>
+                <div style={S.rankWho}>💬 {fr.who} ranked:</div>
+                <div style={S.rankList}>{(fr.ranking || []).slice(0, 8).map((r, j) => (r.rank) + '. ' + (r.name || '—')).join('   ')}</div>
+              </div>
+            ))}
+          </div>
+        ) : (friendRanks && friendRanks.length === 0 ? <div style={S.pyramidDragHint}>No friend rankings yet — share the link and check back.</div> : null)}
+
         <button style={S.howtoBtn} onClick={onClose}>Close</button>
       </div>
     </div>
@@ -2460,6 +2500,11 @@ const S = {
   viewTab: { background: '#1c1c1e', color: '#8e8e93', border: '1px solid #2c2c2e', borderRadius: 9, padding: '7px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
   viewTabOn: { background: '#0A84FF', color: '#fff', borderColor: '#0A84FF' },
   rankHint: { fontSize: 12, color: '#8e8e93', marginTop: 5, lineHeight: 1.4 },
+  shareLinkBox: { fontSize: 12.5, color: '#c7c7cc', background: '#141416', border: '1px solid #2c2c2e', borderRadius: 12, padding: 12, marginTop: 10, lineHeight: 1.5, wordBreak: 'break-all' },
+  ranksBox: { marginTop: 12 },
+  rankSubmission: { background: '#141416', borderRadius: 12, padding: 12, marginBottom: 8 },
+  rankWho: { fontSize: 14, fontWeight: 700, color: '#5E5CE6', marginBottom: 4 },
+  rankList: { fontSize: 13, color: '#e5e5ea', lineHeight: 1.5 },
   bucketWrap: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18 },
   statChip: { fontSize: 13, color: '#c7c7cc', background: '#1c1c1e', borderRadius: 9, padding: '6px 10px', fontWeight: 600 },
 
