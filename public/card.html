@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="supa-url" content="https://trhwxmuyxwnkoblbruos.supabase.co">
+<meta name="supa-key" content="sb_publishable_Kd-OTZx2pq9MaYlKcrB3fg_WeEiweuR">
+<title>Should I pursue them?</title>
+<style>
+  :root{ --bg:#000; --card:#1c1c1e; --line:#2c2c2e; --accent:#5E5CE6; }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh;padding-bottom:40px}
+  .wrap{max-width:520px;margin:0 auto}
+  .loading{text-align:center;color:#8e8e93;padding:70px 20px}
+  .gallery{position:relative;width:100%;background:#000}
+  .gallery img{width:100%;display:block;max-height:70vh;object-fit:contain;background:#0a0a0a}
+  .gnav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.5);border:none;color:#fff;width:46px;height:46px;border-radius:23px;font-size:26px;cursor:pointer}
+  .gprev{left:10px} .gnext{right:10px}
+  .dots{display:flex;gap:6px;justify-content:center;padding:10px 0}
+  .dot{width:7px;height:7px;border-radius:4px;background:#3a3a3c}
+  .dot.on{background:#fff}
+  .info{padding:16px 18px}
+  .nm{font-size:26px;font-weight:900}
+  .meta{font-size:15px;color:#c7c7cc;margin-top:3px}
+  .score{font-size:16px;font-weight:800;margin-top:8px}
+  .vibe{display:inline-block;background:rgba(94,92,230,.2);color:#c7c5ff;border-radius:10px;padding:6px 12px;font-size:14px;margin-top:10px}
+  .summary{font-size:15px;color:#e5e5ea;line-height:1.5;margin-top:12px}
+  .details{margin-top:12px}
+  .detail{font-size:13.5px;color:#c7c7cc;background:var(--card);border-radius:9px;padding:8px 11px;margin-bottom:6px}
+  .q{font-size:20px;font-weight:800;text-align:center;margin:22px 0 14px}
+  .votes{display:flex;gap:10px;padding:0 18px}
+  .vote{flex:1;background:var(--card);border:2px solid var(--line);border-radius:14px;padding:14px 6px;text-align:center;cursor:pointer;transition:transform .1s}
+  .vote:active{transform:scale(.96)}
+  .vote .e{font-size:26px} .vote .l{font-size:12px;font-weight:700;margin-top:4px} .vote .c{font-size:16px;font-weight:900;margin-top:2px}
+  .vote.pursue{border-color:#34C759} .vote.meh{border-color:#FFCC00} .vote.pass{border-color:#FF3B30}
+  .cbox{padding:16px 18px}
+  .cbox input{width:100%;background:var(--card);border:1px solid var(--line);color:#fff;border-radius:11px;padding:12px;font-size:15px;outline:none;margin-bottom:8px;font-family:inherit}
+  .cbox textarea{width:100%;background:var(--card);border:1px solid var(--line);color:#fff;border-radius:11px;padding:12px;font-size:15px;outline:none;min-height:70px;font-family:inherit;resize:vertical}
+  .send{width:100%;background:linear-gradient(135deg,#0A84FF,#5E5CE6);color:#fff;border:none;border-radius:14px;padding:15px;font-size:16px;font-weight:800;cursor:pointer;margin-top:8px}
+  .comments{padding:0 18px}
+  .comment{background:var(--card);border-radius:11px;padding:11px 13px;margin-bottom:7px;font-size:14px;line-height:1.4}
+  .comment b{color:var(--accent)}
+  .cta{background:#141416;border:1px solid var(--line);border-radius:14px;padding:16px;margin:20px 18px;text-align:center}
+  .cta a{color:#0A84FF;font-weight:700;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="loading">Loading…</div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+(async function(){
+  var app=document.getElementById('app');
+  var SU="",SK="";
+  var mu=document.querySelector('meta[name="supa-url"]'); if(mu)SU=mu.content;
+  var mk=document.querySelector('meta[name="supa-key"]'); if(mk)SK=mk.content;
+  var cid=new URLSearchParams(location.search).get('c');
+  if(!cid||!SU||!SK){app.innerHTML='<div class="loading">This link is missing its data. Ask your friend to re-share.</div>';return;}
+  var sb=supabase.createClient(SU,SK);
+  var res=await sb.from('kv').select('value').eq('k','card_'+cid).maybeSingle();
+  if(!res.data||!res.data.value){app.innerHTML='<div class="loading">Couldn\'t find this card. The link may have expired.</div>';return;}
+  var d=res.data.value; var photos=d.photos||[]; var gi=0;
+  render();
+
+  function render(){
+    var html='';
+    // gallery
+    html+='<div class="gallery">';
+    html+= photos.length ? '<img id="gimg" src="'+photos[0]+'">' : '<div class="loading">No photos</div>';
+    if(photos.length>1){ html+='<button class="gnav gprev" id="gp">‹</button><button class="gnav gnext" id="gn">›</button>'; }
+    html+='</div>';
+    if(photos.length>1){ html+='<div class="dots" id="dots">'; for(var i=0;i<photos.length;i++){html+='<div class="dot'+(i===0?' on':'')+'"></div>';} html+='</div>'; }
+    // info
+    html+='<div class="info">';
+    html+='<div class="nm">'+esc(d.name)+(d.age?', '+esc(d.age):'')+'</div>';
+    var meta=[d.livesIn,d.app].filter(Boolean).map(esc).join(' · ');
+    if(meta) html+='<div class="meta">'+meta+'</div>';
+    if(d.score!=null) html+='<div class="score" style="color:'+scoreColor(d.score)+'">'+scoreEmoji(d.score)+' '+d.score+'/100 match</div>';
+    if(d.vibe) html+='<div class="vibe">🎨 '+esc(d.vibe)+'</div>';
+    if(d.summary) html+='<div class="summary">'+esc(d.summary)+'</div>';
+    if(d.details&&d.details.length){ html+='<div class="details">'; d.details.forEach(function(x){html+='<div class="detail">'+esc(x)+'</div>';}); html+='</div>'; }
+    html+='</div>';
+    // vote
+    html+='<div class="q">Should I pursue them?</div>';
+    html+='<div class="votes">'
+      +'<div class="vote pursue" data-v="pursue"><div class="e">👍</div><div class="l">Pursue</div><div class="c" id="cp">0</div></div>'
+      +'<div class="vote meh" data-v="meh"><div class="e">🤔</div><div class="l">Meh</div><div class="c" id="cm">0</div></div>'
+      +'<div class="vote pass" data-v="pass"><div class="e">👎</div><div class="l">Pass</div><div class="c" id="cx">0</div></div>'
+      +'</div>';
+    // comment
+    html+='<div class="cbox">'
+      +'<input id="who" placeholder="Your name">'
+      +'<textarea id="ctext" placeholder="Add a comment (optional)…"></textarea>'
+      +'<button class="send" id="send">Send my take</button>'
+      +'</div>';
+    html+='<div class="comments" id="comments"></div>';
+    html+='<div class="cta">Want your own? <a href="/">Get the Options app →</a></div>';
+    app.innerHTML=html;
+
+    if(photos.length>1){
+      document.getElementById('gp').onclick=function(){gi=(gi-1+photos.length)%photos.length;showG();};
+      document.getElementById('gn').onclick=function(){gi=(gi+1)%photos.length;showG();};
+    }
+    document.querySelectorAll('.vote').forEach(function(v){ v.onclick=function(){castVote(v.dataset.v);}; });
+    document.getElementById('send').onclick=sendTake;
+    loadFeedback();
+  }
+  function showG(){ document.getElementById('gimg').src=photos[gi]; var dots=document.querySelectorAll('.dot'); dots.forEach(function(dt,i){dt.className='dot'+(i===gi?' on':'');}); }
+
+  var myVote=null;
+  async function castVote(v){ myVote=v; document.querySelectorAll('.vote').forEach(function(el){el.style.opacity=el.dataset.v===v?'1':'0.5';}); await saveFeedback(null,v); }
+  async function sendTake(){
+    var who=(document.getElementById('who').value||'A friend').trim();
+    var txt=(document.getElementById('ctext').value||'').trim();
+    await saveFeedback({who:who,text:txt,vote:myVote},null);
+    document.getElementById('ctext').value='';
+    alert('Sent! Thanks 🙌');
+  }
+  async function saveFeedback(comment,voteOnly){
+    var key='cardfb_'+cid;
+    var cur=await sb.from('kv').select('value').eq('k',key).maybeSingle();
+    var fb=(cur.data&&cur.data.value)?cur.data.value:{votes:{pursue:0,meh:0,pass:0},comments:[]};
+    if(voteOnly){ fb.votes[voteOnly]=(fb.votes[voteOnly]||0)+1; }
+    if(comment){ if(comment.text) fb.comments.push({who:comment.who,text:comment.text,at:new Date().toISOString()}); }
+    await sb.from('kv').upsert({k:key,value:fb},{onConflict:'k'});
+    renderFeedback(fb);
+  }
+  async function loadFeedback(){
+    var cur=await sb.from('kv').select('value').eq('k','cardfb_'+cid).maybeSingle();
+    if(cur.data&&cur.data.value) renderFeedback(cur.data.value);
+  }
+  function renderFeedback(fb){
+    if(fb.votes){ document.getElementById('cp').textContent=fb.votes.pursue||0; document.getElementById('cm').textContent=fb.votes.meh||0; document.getElementById('cx').textContent=fb.votes.pass||0; }
+    var c=document.getElementById('comments'); if(!c)return; c.innerHTML='';
+    (fb.comments||[]).slice(-20).forEach(function(cm){ var d=document.createElement('div'); d.className='comment'; d.innerHTML='<b>'+esc(cm.who||'Friend')+':</b> '+esc(cm.text); c.appendChild(d); });
+  }
+
+  function esc(x){ return String(x==null?'':x).replace(/[<>&]/g,function(ch){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[ch];}); }
+  function scoreColor(n){ n=parseInt(n,10); if(n>=70)return '#34C759'; if(n>=40)return '#FFCC00'; return '#FF3B30'; }
+  function scoreEmoji(n){ n=parseInt(n,10); if(n>=85)return '💖'; if(n>=70)return '❤️'; if(n>=55)return '👍'; if(n>=40)return '😐'; return '👎'; }
+})();
+</script>
+</body>
+</html>
