@@ -1,4 +1,4 @@
-// ==================== VERSION 19 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 21 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sget, sset, sdel, storageMode as cloudStorageMode, sgetAllPersons } from './storage.js';
 
@@ -754,7 +754,7 @@ export default function ProspectTracker() {
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v19</span></div>
+        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v21</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
@@ -1673,15 +1673,46 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
           <div style={S.bragBrand}>Options</div>
         </div>
         <button style={S.shareBtn} onClick={async () => {
-          const text = 'Should I pursue them? 👍 pursue / 🤔 meh / 👎 pass';
           try {
-            const blob = await renderProspectCard(p);
-            await shareCardBlob(blob, text);
+            // publish an INTERACTIVE single-person card: friends tap all photos, vote, comment.
+            const thumbs = await thumbsForShare(nonChatPhotos(p), 6, 900); // bigger, full photos
+            const details = (p.details || []).slice(0, 4).map(d => d.cat + ': ' + d.text);
+            const snap = {
+              name: p.name || 'Someone',
+              age: (p.facts && p.facts.age) || '',
+              livesIn: (p.facts && p.facts.livesIn) || '',
+              app: p.app || '',
+              kids: (p.facts && p.facts.kids) || '',
+              score: (p.compat && p.compat.score != null) ? p.compat.score : null,
+              vibe: (p.vibe && p.vibe.vibe) ? p.vibe.vibe : ((p.compat && p.compat.vibe) || ''),
+              summary: (p.profileNotes || '').slice(0, 260),
+              details: details,
+              photos: thumbs,
+            };
+            const cid = 'c' + Math.random().toString(36).slice(2, 9);
+            await sset('card_' + cid, snap);
+            onUpdate(p.id, { lastCardId: cid });
+            const link = window.location.origin + '/card.html?c=' + cid;
+            const text = 'Should I pursue ' + (p.name || 'them') + '? Tap to see all their pics and vote 👀\n' + link;
+            if (navigator.share) { await navigator.share({ text, url: link }); }
+            else { await navigator.clipboard.writeText(link); alert('Link copied! Text it to friends.'); }
           } catch (e) {
-            try { if (navigator.share) await navigator.share({ text }); } catch (e2) {}
+            try { if (navigator.share) await navigator.share({ text: 'Should I pursue them?' }); } catch (e2) {}
           }
-        }}>📤 Share their card</button>
-        <div style={S.bragHint}>Makes a clean image card (her real profile photos + basic stats + a vote prompt) and opens your share sheet. 🔒 Chat screenshots, their messages, and your notes are never included. Tap friends' votes into the 👥 buttons above.</div>
+        }}>📤 Share their card (interactive)</button>
+        <div style={S.bragHint}>Sends a live link — friends tap through all their real photos, see a quick summary, and vote 👍/🤔/👎 + comment. 🔒 Chat screenshots and your notes are never included.</div>
+        {p.lastCardId ? (
+          <button style={{ ...S.readBtn, marginBottom: 8 }} onClick={async () => {
+            try {
+              const fb = await sget('cardfb_' + p.lastCardId);
+              if (fb) {
+                const v = fb.votes || {};
+                const cs = (fb.comments || []).map(c => (c.who || 'Friend') + ': ' + c.text).join('\n');
+                alert('Friends on ' + (p.name || 'them') + ':\n👍 ' + (v.pursue || 0) + '  🤔 ' + (v.meh || 0) + '  👎 ' + (v.pass || 0) + (cs ? '\n\n' + cs : '\n\n(no comments yet)'));
+              } else { alert('No feedback yet — share the card and check back.'); }
+            } catch (e) {}
+          }}>👥 See friends' take on this card</button>
+        ) : null}
         <div style={{ height: 8 }} />
 
         <div style={S.myNotesLabel}>🎤 My notes (tap the mic on your keyboard to talk)</div>
@@ -2734,8 +2765,8 @@ const S = {
   myNotes: { border: '1.5px solid #FFCC00' },
   added: { fontSize: 12, color: '#636366', textAlign: 'center', marginTop: 8 },
 
-  viewerOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
-  viewerImg: { maxWidth: '92%', maxHeight: '88%', objectFit: 'contain', borderRadius: 10 },
+  viewerOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.97)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 10 },
+  viewerImg: { maxWidth: '100%', maxHeight: '92%', width: 'auto', height: 'auto', objectFit: 'contain', borderRadius: 10 },
   viewerClose: { position: 'absolute', top: 20, right: 20, background: 'rgba(255,255,255,0.18)', color: '#fff', border: 'none', borderRadius: 20, width: 40, height: 40, fontSize: 24, cursor: 'pointer' },
   viewerPrev: { position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.18)', color: '#fff', border: 'none', borderRadius: 22, width: 44, height: 44, fontSize: 26, cursor: 'pointer' },
   viewerNext: { position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.18)', color: '#fff', border: 'none', borderRadius: 22, width: 44, height: 44, fontSize: 26, cursor: 'pointer' },
