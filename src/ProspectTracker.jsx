@@ -1,4 +1,4 @@
-// ==================== VERSION 21 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 22 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sget, sset, sdel, storageMode as cloudStorageMode, sgetAllPersons } from './storage.js';
 
@@ -754,7 +754,7 @@ export default function ProspectTracker() {
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v21</span></div>
+        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v22</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
@@ -1693,14 +1693,23 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
             await sset('card_' + cid, snap);
             onUpdate(p.id, { lastCardId: cid });
             const link = window.location.origin + '/card.html?c=' + cid;
-            const text = 'Should I pursue ' + (p.name || 'them') + '? Tap to see all their pics and vote 👀\n' + link;
+            const text = 'Should I pursue ' + (p.name || 'them') + '? Tap to see ALL their pics & vote 👇\n' + link;
+            // render the eye-catching image card AND include the interactive link
+            let blob = null;
+            try { blob = await renderProspectCard(p, link); } catch (e) {}
+            if (blob && navigator.canShare) {
+              const file = new File([blob], 'card.png', { type: 'image/png' });
+              try {
+                if (navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], text, url: link }); return; }
+              } catch (e) {}
+            }
             if (navigator.share) { await navigator.share({ text, url: link }); }
-            else { await navigator.clipboard.writeText(link); alert('Link copied! Text it to friends.'); }
+            else { await navigator.clipboard.writeText(text); alert('Copied! Paste it to friends.'); }
           } catch (e) {
             try { if (navigator.share) await navigator.share({ text: 'Should I pursue them?' }); } catch (e2) {}
           }
-        }}>📤 Share their card (interactive)</button>
-        <div style={S.bragHint}>Sends a live link — friends tap through all their real photos, see a quick summary, and vote 👍/🤔/👎 + comment. 🔒 Chat screenshots and your notes are never included.</div>
+        }}>📤 Share their card (pic + vote link)</button>
+        <div style={S.bragHint}>Sends the eye-catching photo card AND a live link in one text — friends see the pic, then tap to flip through ALL their photos and vote 👍/🤔/👎 + comment. 🔒 Chat screenshots and your notes are never included.</div>
         {p.lastCardId ? (
           <button style={{ ...S.readBtn, marginBottom: 8 }} onClick={async () => {
             try {
@@ -1875,7 +1884,7 @@ function roundRectPath(ctx, x, y, w, h, r) {
 }
 
 // Build a shareable PNG for ONE prospect: a photo collage + her info + vote prompt.
-async function renderProspectCard(p) {
+async function renderProspectCard(p, linkText) {
   const W = 1080, H = 1350;
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
@@ -1929,12 +1938,21 @@ async function renderProspectCard(p) {
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 56px -apple-system, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('Should I pursue them?', W / 2, 1120);
-  ctx.font = '52px -apple-system, sans-serif';
-  ctx.fillText('👍 pursue    🤔 meh    👎 pass', W / 2, 1200);
-  ctx.fillStyle = '#5E5CE6';
-  ctx.font = 'bold 36px -apple-system, sans-serif';
-  ctx.fillText('Options', W / 2, 1290);
+  ctx.fillText('Should I pursue them?', W / 2, 1100);
+  ctx.font = '50px -apple-system, sans-serif';
+  ctx.fillText('👍 pursue    🤔 meh    👎 pass', W / 2, 1175);
+  if (linkText) {
+    ctx.fillStyle = '#0A84FF';
+    ctx.font = 'bold 40px -apple-system, sans-serif';
+    ctx.fillText('👉 Tap the link to see ALL pics & vote', W / 2, 1250);
+    ctx.fillStyle = '#8e8e93';
+    ctx.font = '30px -apple-system, sans-serif';
+    ctx.fillText(linkText.replace(/^https?:\/\//, ''), W / 2, 1300);
+  } else {
+    ctx.fillStyle = '#5E5CE6';
+    ctx.font = 'bold 36px -apple-system, sans-serif';
+    ctx.fillText('Options', W / 2, 1290);
+  }
 
   return await new Promise(res => canvas.toBlob(b => res(b), 'image/png', 0.92));
 }
