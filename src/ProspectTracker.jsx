@@ -1,4 +1,4 @@
-// ==================== VERSION 22 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 23 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sget, sset, sdel, storageMode as cloudStorageMode, sgetAllPersons } from './storage.js';
 
@@ -690,6 +690,7 @@ export default function ProspectTracker() {
     else if (view === 'planning' && bucket !== 'planning') return false;
     else if (view === 'hold' && bucket !== 'hold') return false;
     else if (view === 'inner' && bucket !== 'inner') return false;
+    else if (view === 'bench' && bucket !== 'bench') return false;
     else if (view === 'deleted' && bucket !== 'deleted') return false;
     else if (view === 'followups') {
       // show anyone (not deleted) who has a follow-up date that's due
@@ -748,13 +749,14 @@ export default function ProspectTracker() {
   const holdCount = people.filter(p => (p.bucket || 'active') === 'hold').length;
   const planningCount = people.filter(p => (p.bucket || 'active') === 'planning').length;
   const innerCount = people.filter(p => (p.bucket || 'active') === 'inner').length;
+  const benchCount = people.filter(p => (p.bucket || 'active') === 'bench').length;
   const deletedCount = people.filter(p => (p.bucket || 'active') === 'deleted').length;
   const followUpCount = people.filter(p => (p.bucket || 'active') !== 'deleted' && p.followUpDate && p.followUpDate <= todayStr).length;
 
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v22</span></div>
+        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v23</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
@@ -785,6 +787,7 @@ export default function ProspectTracker() {
           <button style={{ ...S.viewTab, ...(view === 'followups' ? S.viewTabOn : {}) }} onClick={() => setView('followups')}>Follow-ups{followUpCount > 0 ? ' (' + followUpCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, ...(view === 'hold' ? S.viewTabOn : {}) }} onClick={() => setView('hold')}>On Hold{holdCount > 0 ? ' (' + holdCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, ...(view === 'inner' ? { background: '#8e44ad', color: '#fff', borderColor: '#8e44ad' } : {}) }} onClick={() => setView('inner')}>💜 Inner Circle{innerCount > 0 ? ' (' + innerCount + ')' : ''}</button>
+          <button style={{ ...S.viewTab, ...(view === 'bench' ? { background: '#E67E22', color: '#fff', borderColor: '#E67E22' } : {}) }} onClick={() => setView('bench')}>🪑 Bench{benchCount > 0 ? ' (' + benchCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, ...(view === 'deleted' ? S.viewTabOn : {}) }} onClick={() => setView('deleted')}>Archive{deletedCount > 0 ? ' (' + deletedCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, background: '#5E5CE6', color: '#fff', borderColor: '#5E5CE6' }} onClick={() => setShowPyramid(true)}>🔺 Pyramid</button>
         </div>
@@ -833,6 +836,7 @@ export default function ProspectTracker() {
             people.length === 0 ? 'No options yet. Tap below to add your first.' :
             view === 'planning' ? 'Nobody in planning. Set an option\'s List to "Planning" when a date is in the works.' :
             view === 'hold' ? 'Nobody on hold. Open an option and set their List to "Hold" to park them here.' :
+            view === 'bench' ? 'Bench is empty. Set an option\'s List to 🪑 Bench to keep them in reserve — not active, not gone.' :
             view === 'inner' ? 'Inner Circle is empty. Set an option\'s List to 💜 Inner to keep her here — discreet and private.' :
             view === 'deleted' ? 'Archive is empty. Parked options stay here for reference in case they resurface — never truly deleted.' :
             view === 'followups' ? 'No follow-ups due. Set a follow-up date on a prospect to be reminded to reconnect.' :
@@ -1435,9 +1439,9 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         {/* bucket: where does this person live? */}
         <div style={S.fieldLabel}>List</div>
         <div style={S.bucketWrap}>
-          {[['active', 'Active'], ['planning', 'Planning'], ['hold', 'Hold'], ['inner', '💜 Inner'], ['deleted', 'Archive']].map(([key, label]) => (
+          {[['active', 'Active'], ['planning', 'Planning'], ['hold', 'Hold'], ['bench', '🪑 Bench'], ['inner', '💜 Inner'], ['deleted', 'Archive']].map(([key, label]) => (
             <button key={key} onClick={() => onUpdate(p.id, { bucket: key })}
-              style={{ ...S.appChip, flex: 'none', padding: '9px 12px', background: (p.bucket || 'active') === key ? (key === 'inner' ? '#8e44ad' : '#0A84FF') : '#1c1c1e', color: (p.bucket || 'active') === key ? '#fff' : '#8e8e93' }}>
+              style={{ ...S.appChip, flex: 'none', padding: '9px 12px', background: (p.bucket || 'active') === key ? (key === 'inner' ? '#8e44ad' : key === 'bench' ? '#E67E22' : '#0A84FF') : '#1c1c1e', color: (p.bucket || 'active') === key ? '#fff' : '#8e8e93' }}>
               {label}
             </button>
           ))}
@@ -1700,7 +1704,7 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
             if (blob && navigator.canShare) {
               const file = new File([blob], 'card.png', { type: 'image/png' });
               try {
-                if (navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], text, url: link }); return; }
+                if (navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], text }); return; }
               } catch (e) {}
             }
             if (navigator.share) { await navigator.share({ text, url: link }); }
@@ -1899,21 +1903,24 @@ async function renderProspectCard(p, linkText) {
   const pics = nonChatPhotos(p).slice(0, 4);
   const imgs = [];
   for (const src of pics) { const im = await loadImg(src); if (im) imgs.push(im); }
-  const gridX = 60, gridY = 60, gridW = W - 120, gridH = 720, gap = 12;
-  if (imgs.length === 1) {
-    roundRectPath(ctx, gridX, gridY, gridW, gridH, 28); ctx.save(); ctx.clip();
-    drawCover(ctx, imgs[0], gridX, gridY, gridW, gridH); ctx.restore();
-  } else if (imgs.length >= 2) {
-    const cols = 2, rows = Math.ceil(Math.min(imgs.length, 4) / 2);
-    const cw = (gridW - gap) / 2, ch = (gridH - (rows - 1) * gap) / rows;
-    imgs.slice(0, 4).forEach((im, i) => {
-      const cx = gridX + (i % 2) * (cw + gap);
-      const cy = gridY + Math.floor(i / 2) * (ch + gap);
-      roundRectPath(ctx, cx, cy, cw, ch, 20); ctx.save(); ctx.clip();
-      drawCover(ctx, im, cx, cy, cw, ch); ctx.restore();
-    });
+  const gridX = 60, gridY = 60, gridW = W - 120, gridH = 760;
+  if (imgs.length >= 1) {
+    // ONE BIG main photo up top — grabs attention
+    const bigH = imgs.length >= 2 ? 560 : gridH;
+    roundRectPath(ctx, gridX, gridY, gridW, bigH, 28); ctx.save(); ctx.clip();
+    drawCover(ctx, imgs[0], gridX, gridY, gridW, bigH); ctx.restore();
+    // small thumbnail strip of the rest
+    if (imgs.length >= 2) {
+      const rest = imgs.slice(1, 4);
+      const tgap = 12, ty = gridY + bigH + tgap;
+      const tw = (gridW - tgap * (rest.length - 1)) / rest.length, th = 180;
+      rest.forEach((im, i) => {
+        const tx = gridX + i * (tw + tgap);
+        roundRectPath(ctx, tx, ty, tw, th, 16); ctx.save(); ctx.clip();
+        drawCover(ctx, im, tx, ty, tw, th); ctx.restore();
+      });
+    }
   } else {
-    // no photos — initial circle
     ctx.fillStyle = '#2c2c2e'; roundRectPath(ctx, gridX, gridY, gridW, gridH, 28); ctx.fill();
     ctx.fillStyle = '#8e8e93'; ctx.font = 'bold 200px -apple-system, sans-serif';
     ctx.textAlign = 'center'; ctx.fillText((p.name || '?')[0].toUpperCase(), W / 2, gridY + gridH / 2 + 70);
@@ -2214,7 +2221,16 @@ function PrefsModal({ onClose, onSaved }) {
 
 function Pyramid({ people, onClose, onOpen, onReorder }) {
   // EVERYONE (including hold/planning/deleted), in current rank/array order.
-  const [order, setOrder] = React.useState(people.map(p => p.id));
+  const [order, setOrder] = React.useState(
+    people.slice().sort((a, b) => {
+      const ta = a.tier == null ? 1 : a.tier; // 0=High,1=Med,2=Low
+      const tb = b.tier == null ? 1 : b.tier;
+      if (ta !== tb) return ta - tb;
+      const ra = (a.myRank != null && a.myRank !== '') ? parseInt(a.myRank, 10) : 99999;
+      const rb = (b.myRank != null && b.myRank !== '') ? parseInt(b.myRank, 10) : 99999;
+      return ra - rb;
+    }).map(p => p.id)
+  );
   const [dragId, setDragId] = React.useState(null);
   const [pubBusy, setPubBusy] = React.useState(false);
   const [shareId, setShareId] = React.useState(null);
