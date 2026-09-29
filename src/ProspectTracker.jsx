@@ -1,4 +1,4 @@
-// ==================== VERSION 29 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 30 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sget, sset, sdel, storageMode as cloudStorageMode, sgetAllPersons } from './storage.js';
 
@@ -759,7 +759,7 @@ export default function ProspectTracker() {
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v29</span></div>
+        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v30</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
@@ -798,12 +798,11 @@ export default function ProspectTracker() {
         </div>
       )}
 
-      {people.length > 0 && view === 'active' && (
+      {people.length > 0 && (
         <div style={S.statsRow}>
-          <div style={S.statChip}><span style={{ color: TIERS[0].color }}>●</span> {counts[0]} high</div>
-          <div style={S.statChip}><span style={{ color: TIERS[1].color }}>●</span> {counts[1]} med</div>
-          <div style={S.statChip}><span style={{ color: TIERS[2].color }}>●</span> {counts[2]} low</div>
-          {needAction > 0 && <div style={{ ...S.statChip, color: '#FF9F0A' }}>⏱ {needAction} to act on</div>}
+          {STATUSES.map(s => (
+            <div key={s.key} style={S.statChip}><span style={{ color: s.color }}>●</span> {s.label}</div>
+          ))}
         </div>
       )}
 
@@ -854,22 +853,15 @@ export default function ProspectTracker() {
           const status = STATUSES.find(s => s.key === p.status) || STATUSES[0];
           return (
             <div key={p.id} style={S.row} onClick={() => setOpenId(p.id)}>
-              <div style={{ ...S.rowBar, background: tier.color }} />
+              <div style={{ ...S.rowBar, background: status.color }} />
               <div style={S.rank}>{visIdx + 1}</div>
               {p.photos[0]
-                ? <img src={p.photos[0]} style={S.rowAvatar} alt="" />
-                : <div style={S.rowAvatarBlank}>{(p.name || '?')[0].toUpperCase()}</div>}
-              {p.compat && p.compat.score != null ? (
-                <div style={{ ...S.matchBadge, borderColor: matchColor(p.compat.score) }}
-                  onClick={(e) => { e.stopPropagation(); setWhyMatch(p); }}>
-                  <div style={S.matchEmoji}>{matchEmoji(p.compat.score)}</div>
-                  <div style={{ ...S.matchNum, color: matchColor(p.compat.score) }}>{p.compat.score}</div>
-                </div>
-              ) : null}
+                ? <img src={p.photos[0]} style={{ ...S.rowAvatar, border: '2px solid ' + status.color }} alt="" />
+                : <div style={{ ...S.rowAvatarBlank, border: '2px solid ' + status.color }}>{(p.name || '?')[0].toUpperCase()}</div>}
               <div style={S.rowMid}>
                 <div style={S.rowName}>
-                  <span style={{ color: tier.color }}>{p.name || 'Untitled'}</span>
-                  {p.facts.age ? <span style={{ ...S.rowAge, color: tier.color }}> · {p.facts.age}</span> : null}
+                  <span style={{ color: status.color }}>{p.name || 'Untitled'}</span>
+                  {p.facts.age ? <span style={{ ...S.rowAge, color: status.color }}> · {p.facts.age}</span> : null}
                   <span style={{ ...S.tierBadge, background: tier.color }}>{tier.label}</span>
                 </div>
                 <div style={S.rowSub}>
@@ -2399,13 +2391,13 @@ function MapView({ people, onClose, onOpen }) {
         .addTo(map).bindTooltip('You — Balboa Island', { permanent: false });
       // person markers — photo pins with NAME + drive time label
       pool.forEach(({ p, coord, miles, drive }) => {
-        const tier = TIERS[p.tier] || TIERS[1];
+        const st = STATUSES.find(s => s.key === p.status) || STATUSES[0];
         const photo = nonChatPhotos(p)[0];
         const inner = photo
           ? '<img src="' + photo + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%">'
           : '<div style="width:100%;height:100%;border-radius:50%;background:#2c2c2e;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px">' + ((p.name || '?')[0].toUpperCase()) + '</div>';
         const label = '<div style="margin-top:2px;font:700 11px -apple-system;color:#fff;text-shadow:0 1px 3px #000;white-space:nowrap;text-align:center">' + (p.name || '—') + (drive ? ' · ' + drive.fast : '') + '</div>';
-        const html = '<div style="display:flex;flex-direction:column;align-items:center"><div style="width:46px;height:46px;border-radius:50%;border:3px solid ' + tier.color + ';box-shadow:0 2px 6px rgba(0,0,0,.6);overflow:hidden;background:#000">' + inner + '</div>' + label + '</div>';
+        const html = '<div style="display:flex;flex-direction:column;align-items:center"><div style="width:46px;height:46px;border-radius:50%;border:3px solid ' + st.color + ';box-shadow:0 2px 6px rgba(0,0,0,.6);overflow:hidden;background:#000">' + inner + '</div>' + label + '</div>';
         const icon = L.divIcon({ html: html, className: 'photo-pin', iconSize: [80, 66], iconAnchor: [40, 23] });
         const m = L.marker(coord, { icon: icon }).addTo(map);
         m.on('click', () => setSelected({ p, miles, drive }));
@@ -2452,10 +2444,10 @@ function MapView({ people, onClose, onOpen }) {
         {!geoDone ? <div style={S.mapListTitle}>📍 Locating everyone…</div> : null}
         <div style={S.mapListTitle}>Sorted by distance (closest first)</div>
         {pool.map(({ p, miles, drive }) => {
-          const tier = TIERS[p.tier] || TIERS[1];
+          const st = STATUSES.find(s => s.key === p.status) || STATUSES[0];
           return (
             <div key={p.id} style={S.mapListRow} onClick={() => onOpen(p.id)}>
-              {nonChatPhotos(p)[0] ? <img src={nonChatPhotos(p)[0]} style={{ ...S.mapListImg, borderColor: tier.color }} alt="" /> : <div style={{ ...S.mapListImgBlank, borderColor: tier.color }}>{(p.name || '?')[0].toUpperCase()}</div>}
+              {nonChatPhotos(p)[0] ? <img src={nonChatPhotos(p)[0]} style={{ ...S.mapListImg, borderColor: st.color }} alt="" /> : <div style={{ ...S.mapListImgBlank, borderColor: st.color }}>{(p.name || '?')[0].toUpperCase()}</div>}
               <div style={S.mapListMid}>
                 <div style={S.mapListName}>{p.name || '—'} <span style={S.mapListCity}>{(p.facts && p.facts.livesIn) || ''}</span></div>
                 <div style={S.mapListDrive}>🚗 {drive ? drive.fast + '–' + drive.slow : ''}</div>
@@ -2547,8 +2539,7 @@ function Pyramid({ people, onClose, onOpen, onReorder }) {
           {rows.map((row, ri) => (
             <div key={ri} style={S.pyramidRow}>
               {row.map((p) => {
-                const tier = TIERS[p.tier] || TIERS[1];
-                const ai = (p.compat && p.compat.score != null) ? p.compat.score : null;
+                const st = STATUSES.find(s => s.key === p.status) || STATUSES[0];
                 const dimmed = (p.bucket || 'active') === 'deleted';
                 return (
                   <div key={p.id}
@@ -2557,12 +2548,12 @@ function Pyramid({ people, onClose, onOpen, onReorder }) {
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={() => { if (dragId) moveBefore(dragId, p.id); setDragId(null); }}
                     onClick={() => onOpen(p.id)}
-                    style={{ ...S.pyramidCard, borderColor: tier.color, opacity: dimmed ? 0.4 : 1 }}>
+                    style={{ ...S.pyramidCard, borderColor: st.color, opacity: dimmed ? 0.4 : 1 }}>
                     {p.photos && p.photos[0]
                       ? <img src={p.photos[0]} style={S.pyramidImg} alt="" draggable={false} />
                       : <div style={S.pyramidImgBlank}>{(p.name || '?')[0].toUpperCase()}</div>}
                     <div style={S.pyramidName}>{p.name || '—'}</div>
-                    {ai != null ? <div style={{ ...S.pyramidScore, color: matchColor(ai) }}>{ai}</div> : <div style={{ ...S.pyramidScore, color: '#8e8e93' }}>—</div>}
+                    <div style={{ ...S.pyramidScore, color: st.color, fontSize: 10 }}>{st.label}</div>
                   </div>
                 );
               })}
