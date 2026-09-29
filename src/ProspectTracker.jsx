@@ -1,4 +1,4 @@
-// ==================== VERSION 25 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 26 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sget, sset, sdel, storageMode as cloudStorageMode, sgetAllPersons } from './storage.js';
 
@@ -757,7 +757,7 @@ export default function ProspectTracker() {
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v25</span></div>
+        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v26</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
@@ -2328,16 +2328,22 @@ function MapView({ people, onClose, onOpen }) {
       if (!window.L || !mapRef.current) return;
       const L = window.L;
       const map = L.map(mapRef.current, { zoomControl: true }).setView(HOME, 10);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19,
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap', maxZoom: 19,
       }).addTo(map);
       // home marker
       L.circleMarker(HOME, { radius: 9, color: '#fff', fillColor: '#0A84FF', fillOpacity: 1, weight: 3 })
         .addTo(map).bindTooltip('You — Balboa Island', { permanent: false });
-      // person markers
+      // person markers — photo pins
       pool.forEach(({ p, coord, miles }) => {
         const tier = TIERS[p.tier] || TIERS[1];
-        const m = L.circleMarker(coord, { radius: 11, color: '#fff', fillColor: tier.color, fillOpacity: 0.95, weight: 2 }).addTo(map);
+        const photo = nonChatPhotos(p)[0];
+        const inner = photo
+          ? '<img src="' + photo + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%">'
+          : '<div style="width:100%;height:100%;border-radius:50%;background:#2c2c2e;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px">' + ((p.name || '?')[0].toUpperCase()) + '</div>';
+        const html = '<div style="width:44px;height:44px;border-radius:50%;border:3px solid ' + tier.color + ';box-shadow:0 2px 6px rgba(0,0,0,.5);overflow:hidden;background:#000">' + inner + '</div>';
+        const icon = L.divIcon({ html: html, className: 'photo-pin', iconSize: [44, 44], iconAnchor: [22, 22] });
+        const m = L.marker(coord, { icon: icon }).addTo(map);
         m.on('click', () => setSelected({ p, miles }));
       });
       if (pool.length) {
