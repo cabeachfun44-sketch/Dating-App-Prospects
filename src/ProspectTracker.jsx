@@ -1,4 +1,4 @@
-// ==================== VERSION 30 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 31 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sget, sset, sdel, storageMode as cloudStorageMode, sgetAllPersons } from './storage.js';
 
@@ -39,6 +39,29 @@ const STATUSES = [
   { key: 'dating', label: 'Dating', color: '#34C759' },
   { key: 'faded', label: 'Faded', color: '#8e8e93' },
 ];
+
+// THE FOUR CATEGORIES — the single, simple system. Order = pyramid top→bottom.
+const CATEGORIES = [
+  { key: 'dating', label: 'Dating', color: '#34C759' },        // 🟢 top
+  { key: 'planned', label: 'Date planned', color: '#FF9F0A' }, // 🟠 second
+  { key: 'bench', label: 'Bench', color: '#FFD93D' },          // 🟡 third
+  { key: 'archive', label: 'Archive', color: '#8e8e93' },      // ⚪ bottom
+];
+// Map any old bucket/status value onto the four categories (misfits → bench).
+function categoryOf(p) {
+  const b = p.cat || p.bucket || '';
+  if (b === 'dating') return 'dating';
+  if (b === 'planned' || b === 'dateset' || b === 'planning') return 'planned';
+  if (b === 'archive' || b === 'deleted') return 'archive';
+  if (b === 'bench') return 'bench';
+  // fall back to old status field
+  if (p.status === 'dating') return 'dating';
+  if (p.status === 'datePlanned') return 'planned';
+  // everyone else → bench (safe middle)
+  return 'bench';
+}
+function catMeta(key) { return CATEGORIES.find(c => c.key === key) || CATEGORIES[2]; }
+function catRank(key) { const i = CATEGORIES.findIndex(c => c.key === key); return i < 0 ? 2 : i; }
 
 // "See how it works" copy for the info dots
 const HOWTO = {
@@ -145,7 +168,8 @@ function blankPerson(name) {
     app: '',
     tier: 1,
     myRank: '',
-    bucket: 'active',        // active | hold | deleted
+    bucket: 'active',        // legacy — replaced by cat
+    cat: 'bench',            // dating | planned | bench | archive (new default: bench)
     followUpDate: '',        // when to reconnect (YYYY-MM-DD)
     followUpNote: '',        // what to say / ask when you reconnect
     origin: '',              // how/where you found her (handle, app, event)
@@ -684,22 +708,9 @@ export default function ProspectTracker() {
   const q = query.trim().toLowerCase();
   const todayStr = new Date().toISOString().slice(0, 10);
   const visible = people.filter(p => {
-    const bucket = p.bucket || 'active';
-    // which section are we looking at?
-    if (view === 'all') { /* show everyone regardless of bucket */ }
-    else if (view === 'active' && bucket !== 'active') return false;
-    else if (view === 'planning' && bucket !== 'planning') return false;
-    else if (view === 'hold' && bucket !== 'hold') return false;
-    else if (view === 'inner' && bucket !== 'inner') return false;
-    else if (view === 'bench' && bucket !== 'bench') return false;
-    else if (view === 'dateset' && bucket !== 'dateset') return false;
-    else if (view === 'deleted' && bucket !== 'deleted') return false;
-    else if (view === 'followups') {
-      // show anyone (not deleted) who has a follow-up date that's due
-      if (bucket === 'deleted') return false;
-      if (!p.followUpDate) return false;
-      if (p.followUpDate > todayStr) return false;
-    }
+    const cat = categoryOf(p);
+    if (view === 'all') { /* show everyone */ }
+    else if (view !== cat) return false; // view is a category key
     if (filterTier !== null && p.tier !== filterTier) return false;
     if (!q) return true;
     const hay = (p.name + ' ' + p.app + ' ' + (p.facts.livesIn || '') + ' ' + (p.facts.hometown || '') + ' ' + (p.facts.religion || '') + ' ' + (p.facts.kids || '') + ' ' + (p.contact || '') + ' ' + p.profileNotes + ' ' + p.myNotes + ' ' + (p.followUpNote || '')).toLowerCase();
@@ -740,26 +751,17 @@ export default function ProspectTracker() {
         case 'tier':
         default: break;
       }
-      // fallback: your interest tier, then manual order
-      const ta = A.tier == null ? 1 : A.tier;
-      const tb = B.tier == null ? 1 : B.tier;
-      if (ta !== tb) return ta - tb;
+      // fallback: category order (Dating→Planned→Bench→Archive), then manual order
+      const ca = catRank(categoryOf(A));
+      const cb = catRank(categoryOf(B));
+      if (ca !== cb) return ca - cb;
       return a.i - b.i;
     }).map(x => x.p);
-  const counts = [0, 1, 2].map(t => people.filter(p => p.tier === t && (p.bucket || 'active') === 'active').length);
-  const needAction = people.filter(p => p.nextStep && p.nextStep.trim() && (p.bucket || 'active') === 'active').length;
-  const holdCount = people.filter(p => (p.bucket || 'active') === 'hold').length;
-  const planningCount = people.filter(p => (p.bucket || 'active') === 'planning').length;
-  const innerCount = people.filter(p => (p.bucket || 'active') === 'inner').length;
-  const benchCount = people.filter(p => (p.bucket || 'active') === 'bench').length;
-  const datesetCount = people.filter(p => (p.bucket || 'active') === 'dateset').length;
-  const deletedCount = people.filter(p => (p.bucket || 'active') === 'deleted').length;
-  const followUpCount = people.filter(p => (p.bucket || 'active') !== 'deleted' && p.followUpDate && p.followUpDate <= todayStr).length;
 
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v30</span></div>
+        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v31</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
@@ -784,15 +786,15 @@ export default function ProspectTracker() {
 
       {people.length > 0 && (
         <div style={S.viewTabs}>
-          <button style={{ ...S.viewTab, ...(view === 'all' ? S.viewTabOn : {}) }} onClick={() => setView('all')}>All ({people.filter(p => (p.bucket || 'active') !== 'deleted').length})</button>
-          <button style={{ ...S.viewTab, ...(view === 'active' ? S.viewTabOn : {}) }} onClick={() => setView('active')}>Active</button>
-          <button style={{ ...S.viewTab, ...(view === 'planning' ? S.viewTabOn : {}) }} onClick={() => setView('planning')}>Planning date{planningCount > 0 ? ' (' + planningCount + ')' : ''}</button>
-          <button style={{ ...S.viewTab, ...(view === 'followups' ? S.viewTabOn : {}) }} onClick={() => setView('followups')}>Follow-ups{followUpCount > 0 ? ' (' + followUpCount + ')' : ''}</button>
-          <button style={{ ...S.viewTab, ...(view === 'hold' ? S.viewTabOn : {}) }} onClick={() => setView('hold')}>On Hold{holdCount > 0 ? ' (' + holdCount + ')' : ''}</button>
-          <button style={{ ...S.viewTab, ...(view === 'inner' ? { background: '#8e44ad', color: '#fff', borderColor: '#8e44ad' } : {}) }} onClick={() => setView('inner')}>💜 Inner Circle{innerCount > 0 ? ' (' + innerCount + ')' : ''}</button>
-          <button style={{ ...S.viewTab, ...(view === 'dateset' ? { background: '#e84393', color: '#fff', borderColor: '#e84393' } : {}) }} onClick={() => setView('dateset')}>📆 Date set{datesetCount > 0 ? ' (' + datesetCount + ')' : ''}</button>
-          <button style={{ ...S.viewTab, ...(view === 'bench' ? { background: '#E67E22', color: '#fff', borderColor: '#E67E22' } : {}) }} onClick={() => setView('bench')}>🪑 Bench{benchCount > 0 ? ' (' + benchCount + ')' : ''}</button>
-          <button style={{ ...S.viewTab, ...(view === 'deleted' ? S.viewTabOn : {}) }} onClick={() => setView('deleted')}>Archive{deletedCount > 0 ? ' (' + deletedCount + ')' : ''}</button>
+          <button style={{ ...S.viewTab, ...(view === 'all' ? S.viewTabOn : {}) }} onClick={() => setView('all')}>All ({people.length})</button>
+          {CATEGORIES.map(c => {
+            const n = people.filter(pp => categoryOf(pp) === c.key).length;
+            return (
+              <button key={c.key} style={{ ...S.viewTab, ...(view === c.key ? { background: c.color, color: '#000', borderColor: c.color } : {}) }} onClick={() => setView(c.key)}>
+                {c.label}{n > 0 ? ' (' + n + ')' : ''}
+              </button>
+            );
+          })}
           <button style={{ ...S.viewTab, background: '#5E5CE6', color: '#fff', borderColor: '#5E5CE6' }} onClick={() => setShowPyramid(true)}>🔺 Pyramid</button>
           <button style={{ ...S.viewTab, background: '#12b76a', color: '#fff', borderColor: '#12b76a' }} onClick={() => setShowMap(true)}>🗺️ Map</button>
         </div>
@@ -800,8 +802,8 @@ export default function ProspectTracker() {
 
       {people.length > 0 && (
         <div style={S.statsRow}>
-          {STATUSES.map(s => (
-            <div key={s.key} style={S.statChip}><span style={{ color: s.color }}>●</span> {s.label}</div>
+          {CATEGORIES.map(c => (
+            <div key={c.key} style={S.statChip}><span style={{ color: c.color }}>●</span> {c.label}</div>
           ))}
         </div>
       )}
@@ -838,34 +840,29 @@ export default function ProspectTracker() {
         {visible.length === 0 && (
           <div style={S.emptyState}>{
             people.length === 0 ? 'No options yet. Tap below to add your first.' :
-            view === 'planning' ? 'Nobody in planning. Set an option\'s List to "Planning" when a date is in the works.' :
-            view === 'hold' ? 'Nobody on hold. Open an option and set their List to "Hold" to park them here.' :
-            view === 'dateset' ? 'No dates set. Set an option\'s List to 📆 Date set once a date is locked in.' :
-            view === 'bench' ? 'Bench is empty. Set an option\'s List to 🪑 Bench to keep them in reserve — not active, not gone.' :
-            view === 'inner' ? 'Inner Circle is empty. Set an option\'s List to 💜 Inner to keep her here — discreet and private.' :
-            view === 'deleted' ? 'Archive is empty. Parked options stay here for reference in case they resurface — never truly deleted.' :
-            view === 'followups' ? 'No follow-ups due. Set a follow-up date on a prospect to be reminded to reconnect.' :
+            view === 'dating' ? 'Nobody set to Dating yet. Open someone and set their category to 🟢 Dating.' :
+            view === 'planned' ? 'No dates planned. Set someone to 🟠 Date planned when a date is in the works.' :
+            view === 'bench' ? 'Bench is empty. Set someone to 🟡 Bench to keep them in reserve.' :
+            view === 'archive' ? 'Archive is empty. Set someone to ⚪ Archive to hold them indefinitely.' :
             'None match.'
           }</div>
         )}
         {visible.map((p, visIdx) => {
-          const tier = TIERS[p.tier] || TIERS[1];
-          const status = STATUSES.find(s => s.key === p.status) || STATUSES[0];
+          const cat = catMeta(categoryOf(p));
           return (
             <div key={p.id} style={S.row} onClick={() => setOpenId(p.id)}>
-              <div style={{ ...S.rowBar, background: status.color }} />
+              <div style={{ ...S.rowBar, background: cat.color }} />
               <div style={S.rank}>{visIdx + 1}</div>
               {p.photos[0]
-                ? <img src={p.photos[0]} style={{ ...S.rowAvatar, border: '2px solid ' + status.color }} alt="" />
-                : <div style={{ ...S.rowAvatarBlank, border: '2px solid ' + status.color }}>{(p.name || '?')[0].toUpperCase()}</div>}
+                ? <img src={p.photos[0]} style={{ ...S.rowAvatar, border: '2px solid ' + cat.color }} alt="" />
+                : <div style={{ ...S.rowAvatarBlank, border: '2px solid ' + cat.color }}>{(p.name || '?')[0].toUpperCase()}</div>}
               <div style={S.rowMid}>
                 <div style={S.rowName}>
-                  <span style={{ color: status.color }}>{p.name || 'Untitled'}</span>
-                  {p.facts.age ? <span style={{ ...S.rowAge, color: status.color }}> · {p.facts.age}</span> : null}
-                  <span style={{ ...S.tierBadge, background: tier.color }}>{tier.label}</span>
+                  <span style={{ color: cat.color }}>{p.name || 'Untitled'}</span>
+                  {p.facts.age ? <span style={{ ...S.rowAge, color: cat.color }}> · {p.facts.age}</span> : null}
                 </div>
                 <div style={S.rowSub}>
-                  <span style={{ ...S.statusPill, background: status.color }}>{status.label}</span>
+                  <span style={{ ...S.statusPill, background: cat.color, color: '#000' }}>{cat.label}</span>
                   {p.app ? ' ' + p.app : ''}
                   {p.facts.livesIn ? ' · ' + p.facts.livesIn : ''}
                 </div>
@@ -1225,7 +1222,7 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
       <div style={S.navBar}>
         <button style={S.navBtn} onClick={onBack}>‹ List</button>
         <div style={S.navTitle}>{p.name || 'Prospect'}</div>
-        <button style={confirmDel ? S.navDeleteArmed : S.navDelete} onClick={() => { if (confirmDel) { onUpdate(p.id, { bucket: 'deleted' }); onBack(); } else { setConfirmDel(true); setTimeout(() => setConfirmDel(false), 3000); } }}>{confirmDel ? 'Move to Archive' : 'Archive'}</button>
+        <button style={confirmDel ? S.navDeleteArmed : S.navDelete} onClick={() => { if (confirmDel) { onUpdate(p.id, { cat: 'archive' }); onBack(); } else { setConfirmDel(true); setTimeout(() => setConfirmDel(false), 3000); } }}>{confirmDel ? 'Move to Archive' : 'Archive'}</button>
       </div>
 
       <div style={S.detailBody}>
@@ -1435,15 +1432,18 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         <div style={S.rankHint}>Type the position and tap away — it moves them there and renumbers everyone. Shows up in the list and pyramid instantly.</div>
         <div style={{ height: 14 }} />
 
-        {/* bucket: where does this person live? */}
-        <div style={S.fieldLabel}>List</div>
+        {/* THE category — one simple choice */}
+        <div style={S.fieldLabel}>Category</div>
         <div style={S.bucketWrap}>
-          {[['active', 'Active'], ['planning', 'Planning'], ['dateset', '📆 Date set'], ['hold', 'Hold'], ['bench', '🪑 Bench'], ['inner', '💜 Inner'], ['deleted', 'Archive']].map(([key, label]) => (
-            <button key={key} onClick={() => onUpdate(p.id, { bucket: key })}
-              style={{ ...S.appChip, flex: 'none', padding: '9px 12px', background: (p.bucket || 'active') === key ? (key === 'inner' ? '#8e44ad' : key === 'bench' ? '#E67E22' : key === 'dateset' ? '#e84393' : '#0A84FF') : '#1c1c1e', color: (p.bucket || 'active') === key ? '#fff' : '#8e8e93' }}>
-              {label}
-            </button>
-          ))}
+          {CATEGORIES.map(c => {
+            const on = categoryOf(p) === c.key;
+            return (
+              <button key={c.key} onClick={() => onUpdate(p.id, { cat: c.key })}
+                style={{ ...S.appChip, flex: 'none', padding: '10px 14px', fontWeight: 800, background: on ? c.color : '#1c1c1e', color: on ? '#000' : '#8e8e93' }}>
+                {c.label}
+              </button>
+            );
+          })}
         </div>
         <div style={{ height: 14 }} />
 
@@ -1496,17 +1496,6 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
           </div>
         ) : null}
         <div style={{ height: 14 }} />
-
-        {/* status */}
-        <div style={S.fieldLabel}>Status</div>
-        <div style={S.statusRow}>
-          {STATUSES.map(s => (
-            <button key={s.key} onClick={() => onUpdate(p.id, { status: s.key })}
-              style={{ ...S.statusChip, background: p.status === s.key ? s.color : '#1c1c1e', color: p.status === s.key ? '#fff' : '#8e8e93' }}>
-              {s.label}
-            </button>
-          ))}
-        </div>
 
         {/* next step */}
         <div style={S.fieldLabel}>⏱ Next step</div>
@@ -2336,10 +2325,7 @@ function MapView({ people, onClose, onOpen }) {
   const [selected, setSelected] = React.useState(null);
   const [filter, setFilter] = React.useState('all'); // all | active | planning | dateset | hold | bench | inner
 
-  const BUCKETS = [
-    ['all', 'All'], ['active', 'Active'], ['planning', 'Planning'], ['dateset', 'Date set'],
-    ['hold', 'Hold'], ['bench', 'Bench'], ['inner', 'Inner'],
-  ];
+  const BUCKETS = [['all', 'All'], ...CATEGORIES.map(c => [c.key, c.label])];
 
   const [coords, setCoords] = React.useState({}); // id -> [lat,lng]
   const [geoDone, setGeoDone] = React.useState(false);
@@ -2347,7 +2333,7 @@ function MapView({ people, onClose, onOpen }) {
   // Auto-geocode every prospect's city (uses free lookup + cache) on open.
   React.useEffect(() => {
     (async () => {
-      const active = people.filter(p => (p.bucket || 'active') !== 'deleted');
+      const active = people.filter(p => categoryOf(p) !== 'archive');
       const found = {};
       for (const p of active) {
         const city = p.facts && p.facts.livesIn;
@@ -2362,8 +2348,7 @@ function MapView({ people, onClose, onOpen }) {
 
   // EVERYONE (except archived), matching the filter. Attach coord + miles + drive time.
   const all = people
-    .filter(p => (p.bucket || 'active') !== 'deleted')
-    .filter(p => filter === 'all' ? true : (p.bucket || 'active') === filter)
+    .filter(p => filter === 'all' ? categoryOf(p) !== 'archive' : categoryOf(p) === filter)
     .map(p => { const coord = coords[p.id] || cityCoord(p.facts && p.facts.livesIn); const miles = milesFromHome(coord); return { p, coord, miles, drive: driveTimeRange(miles) }; });
   const pool = all.filter(x => x.coord).sort((a, b) => (a.miles || 0) - (b.miles || 0)); // on the map
   const noLoc = all.filter(x => !x.coord); // no city on file at all
@@ -2391,7 +2376,7 @@ function MapView({ people, onClose, onOpen }) {
         .addTo(map).bindTooltip('You — Balboa Island', { permanent: false });
       // person markers — photo pins with NAME + drive time label
       pool.forEach(({ p, coord, miles, drive }) => {
-        const st = STATUSES.find(s => s.key === p.status) || STATUSES[0];
+        const st = catMeta(categoryOf(p));
         const photo = nonChatPhotos(p)[0];
         const inner = photo
           ? '<img src="' + photo + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%">'
@@ -2444,7 +2429,7 @@ function MapView({ people, onClose, onOpen }) {
         {!geoDone ? <div style={S.mapListTitle}>📍 Locating everyone…</div> : null}
         <div style={S.mapListTitle}>Sorted by distance (closest first)</div>
         {pool.map(({ p, miles, drive }) => {
-          const st = STATUSES.find(s => s.key === p.status) || STATUSES[0];
+          const st = catMeta(categoryOf(p));
           return (
             <div key={p.id} style={S.mapListRow} onClick={() => onOpen(p.id)}>
               {nonChatPhotos(p)[0] ? <img src={nonChatPhotos(p)[0]} style={{ ...S.mapListImg, borderColor: st.color }} alt="" /> : <div style={{ ...S.mapListImgBlank, borderColor: st.color }}>{(p.name || '?')[0].toUpperCase()}</div>}
@@ -2529,39 +2514,56 @@ function Pyramid({ people, onClose, onOpen, onReorder }) {
     });
   };
 
+  const [expanded, setExpanded] = React.useState(null); // a category key, or null = show all
+
+  // group the ordered people into the 4 categories
+  const groups = CATEGORIES.map(c => ({
+    cat: c,
+    members: ordered.filter(p => categoryOf(p) === c.key),
+  }));
+  const shownGroups = expanded ? groups.filter(g => g.cat.key === expanded) : groups;
+
+  const personCard = (p, big) => {
+    const cat = catMeta(categoryOf(p));
+    return (
+      <div key={p.id}
+        draggable
+        onDragStart={() => setDragId(p.id)}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={() => { if (dragId) moveBefore(dragId, p.id); setDragId(null); }}
+        onClick={() => onOpen(p.id)}
+        style={{ ...(big ? S.pyramidCardBig : S.pyramidCard), borderColor: cat.color }}>
+        {p.photos && p.photos[0]
+          ? <img src={p.photos[0]} style={big ? S.pyramidImgBig : S.pyramidImg} alt="" draggable={false} />
+          : <div style={big ? S.pyramidImgBigBlank : S.pyramidImgBlank}>{(p.name || '?')[0].toUpperCase()}</div>}
+        <div style={S.pyramidName}>{p.name || '—'}{p.facts && p.facts.age ? ', ' + p.facts.age : ''}</div>
+      </div>
+    );
+  };
+
   return (
     <div style={S.sheetOverlay} onClick={onClose}>
       <div style={S.pyramidSheet} onClick={e => e.stopPropagation()}>
         <div style={S.sheetHandle} />
-        <div style={S.pyramidTitle}>🔺 Your Prospect Pyramid</div>
-        <div style={S.pyramidSub}>Everyone, top pick at the peak. <b>Drag</b> anyone to reposition, or tap to open.</div>
+        <div style={S.pyramidTitle}>🔺 Your Pyramid</div>
+        <div style={S.pyramidSub}>{expanded ? 'Tap the header to go back. Drag to reorder.' : 'Tap a category to expand it. Drag anyone to reorder.'}</div>
+
         <div style={S.pyramidWrap}>
-          {rows.map((row, ri) => (
-            <div key={ri} style={S.pyramidRow}>
-              {row.map((p) => {
-                const st = STATUSES.find(s => s.key === p.status) || STATUSES[0];
-                const dimmed = (p.bucket || 'active') === 'deleted';
-                return (
-                  <div key={p.id}
-                    draggable
-                    onDragStart={() => setDragId(p.id)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => { if (dragId) moveBefore(dragId, p.id); setDragId(null); }}
-                    onClick={() => onOpen(p.id)}
-                    style={{ ...S.pyramidCard, borderColor: st.color, opacity: dimmed ? 0.4 : 1 }}>
-                    {p.photos && p.photos[0]
-                      ? <img src={p.photos[0]} style={S.pyramidImg} alt="" draggable={false} />
-                      : <div style={S.pyramidImgBlank}>{(p.name || '?')[0].toUpperCase()}</div>}
-                    <div style={S.pyramidName}>{p.name || '—'}</div>
-                    <div style={{ ...S.pyramidScore, color: st.color, fontSize: 10 }}>{st.label}</div>
-                  </div>
-                );
-              })}
+          {shownGroups.map(({ cat, members }) => (
+            <div key={cat.key} style={{ width: '100%', marginBottom: 14 }}>
+              <div onClick={() => setExpanded(expanded === cat.key ? null : cat.key)}
+                style={{ ...S.catHeader, background: cat.color }}>
+                {cat.label} · {members.length}{expanded === cat.key ? '   ▲ back' : '   ▼ expand'}
+              </div>
+              <div style={{ ...S.catMembers, justifyContent: 'center' }}>
+                {members.map(p => personCard(p, !!expanded))}
+                {members.length === 0 ? <div style={S.catEmpty}>—</div> : null}
+              </div>
             </div>
           ))}
           {ordered.length === 0 ? <div style={S.pyramidEmpty}>Add options to see your pyramid.</div> : null}
         </div>
-        <div style={S.pyramidDragHint}>Drag a card onto another to move it there. Deleted prospects appear dimmed.</div>
+        <div style={S.pyramidDragHint}>Tap a category header to expand it full-screen. Drag a card onto another to reorder.</div>
 
         <button style={S.shareBtn} onClick={async () => {
           try {
@@ -3014,6 +3016,12 @@ const S = {
   pyramidWrap: { display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', marginBottom: 18 },
   pyramidRow: { display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' },
   pyramidCard: { width: 72, borderRadius: 12, border: '2px solid', background: '#1c1c1e', padding: 6, cursor: 'pointer', textAlign: 'center', flexShrink: 0 },
+  pyramidCardBig: { width: 130, borderRadius: 16, border: '3px solid', background: '#1c1c1e', padding: 8, cursor: 'pointer', textAlign: 'center', flexShrink: 0 },
+  pyramidImgBig: { width: 112, height: 112, borderRadius: 12, objectFit: 'cover', display: 'block', margin: '0 auto' },
+  pyramidImgBigBlank: { width: 112, height: 112, borderRadius: 12, background: '#2c2c2e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, fontWeight: 700, color: '#8e8e93', margin: '0 auto' },
+  catHeader: { color: '#000', fontWeight: 900, fontSize: 15, padding: '10px 14px', borderRadius: 11, cursor: 'pointer', textAlign: 'center', marginBottom: 10 },
+  catMembers: { display: 'flex', flexWrap: 'wrap', gap: 10 },
+  catEmpty: { color: '#5a5a5e', fontSize: 20, padding: 6 },
   pyramidImg: { width: 58, height: 58, borderRadius: 9, objectFit: 'cover', display: 'block', margin: '0 auto' },
   pyramidImgBlank: { width: 58, height: 58, borderRadius: 9, background: '#2c2c2e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 700, color: '#8e8e93', margin: '0 auto' },
   pyramidName: { fontSize: 11, fontWeight: 700, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
