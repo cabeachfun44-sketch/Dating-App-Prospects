@@ -1,4 +1,4 @@
-// ==================== VERSION 26 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 27 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sget, sset, sdel, storageMode as cloudStorageMode, sgetAllPersons } from './storage.js';
 
@@ -692,6 +692,7 @@ export default function ProspectTracker() {
     else if (view === 'hold' && bucket !== 'hold') return false;
     else if (view === 'inner' && bucket !== 'inner') return false;
     else if (view === 'bench' && bucket !== 'bench') return false;
+    else if (view === 'dateset' && bucket !== 'dateset') return false;
     else if (view === 'deleted' && bucket !== 'deleted') return false;
     else if (view === 'followups') {
       // show anyone (not deleted) who has a follow-up date that's due
@@ -751,13 +752,14 @@ export default function ProspectTracker() {
   const planningCount = people.filter(p => (p.bucket || 'active') === 'planning').length;
   const innerCount = people.filter(p => (p.bucket || 'active') === 'inner').length;
   const benchCount = people.filter(p => (p.bucket || 'active') === 'bench').length;
+  const datesetCount = people.filter(p => (p.bucket || 'active') === 'dateset').length;
   const deletedCount = people.filter(p => (p.bucket || 'active') === 'deleted').length;
   const followUpCount = people.filter(p => (p.bucket || 'active') !== 'deleted' && p.followUpDate && p.followUpDate <= todayStr).length;
 
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v26</span></div>
+        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v27</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
@@ -788,6 +790,7 @@ export default function ProspectTracker() {
           <button style={{ ...S.viewTab, ...(view === 'followups' ? S.viewTabOn : {}) }} onClick={() => setView('followups')}>Follow-ups{followUpCount > 0 ? ' (' + followUpCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, ...(view === 'hold' ? S.viewTabOn : {}) }} onClick={() => setView('hold')}>On Hold{holdCount > 0 ? ' (' + holdCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, ...(view === 'inner' ? { background: '#8e44ad', color: '#fff', borderColor: '#8e44ad' } : {}) }} onClick={() => setView('inner')}>💜 Inner Circle{innerCount > 0 ? ' (' + innerCount + ')' : ''}</button>
+          <button style={{ ...S.viewTab, ...(view === 'dateset' ? { background: '#e84393', color: '#fff', borderColor: '#e84393' } : {}) }} onClick={() => setView('dateset')}>📆 Date set{datesetCount > 0 ? ' (' + datesetCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, ...(view === 'bench' ? { background: '#E67E22', color: '#fff', borderColor: '#E67E22' } : {}) }} onClick={() => setView('bench')}>🪑 Bench{benchCount > 0 ? ' (' + benchCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, ...(view === 'deleted' ? S.viewTabOn : {}) }} onClick={() => setView('deleted')}>Archive{deletedCount > 0 ? ' (' + deletedCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, background: '#5E5CE6', color: '#fff', borderColor: '#5E5CE6' }} onClick={() => setShowPyramid(true)}>🔺 Pyramid</button>
@@ -838,6 +841,7 @@ export default function ProspectTracker() {
             people.length === 0 ? 'No options yet. Tap below to add your first.' :
             view === 'planning' ? 'Nobody in planning. Set an option\'s List to "Planning" when a date is in the works.' :
             view === 'hold' ? 'Nobody on hold. Open an option and set their List to "Hold" to park them here.' :
+            view === 'dateset' ? 'No dates set. Set an option\'s List to 📆 Date set once a date is locked in.' :
             view === 'bench' ? 'Bench is empty. Set an option\'s List to 🪑 Bench to keep them in reserve — not active, not gone.' :
             view === 'inner' ? 'Inner Circle is empty. Set an option\'s List to 💜 Inner to keep her here — discreet and private.' :
             view === 'deleted' ? 'Archive is empty. Parked options stay here for reference in case they resurface — never truly deleted.' :
@@ -1442,9 +1446,9 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         {/* bucket: where does this person live? */}
         <div style={S.fieldLabel}>List</div>
         <div style={S.bucketWrap}>
-          {[['active', 'Active'], ['planning', 'Planning'], ['hold', 'Hold'], ['bench', '🪑 Bench'], ['inner', '💜 Inner'], ['deleted', 'Archive']].map(([key, label]) => (
+          {[['active', 'Active'], ['planning', 'Planning'], ['dateset', '📆 Date set'], ['hold', 'Hold'], ['bench', '🪑 Bench'], ['inner', '💜 Inner'], ['deleted', 'Archive']].map(([key, label]) => (
             <button key={key} onClick={() => onUpdate(p.id, { bucket: key })}
-              style={{ ...S.appChip, flex: 'none', padding: '9px 12px', background: (p.bucket || 'active') === key ? (key === 'inner' ? '#8e44ad' : key === 'bench' ? '#E67E22' : '#0A84FF') : '#1c1c1e', color: (p.bucket || 'active') === key ? '#fff' : '#8e8e93' }}>
+              style={{ ...S.appChip, flex: 'none', padding: '9px 12px', background: (p.bucket || 'active') === key ? (key === 'inner' ? '#8e44ad' : key === 'bench' ? '#E67E22' : key === 'dateset' ? '#e84393' : '#0A84FF') : '#1c1c1e', color: (p.bucket || 'active') === key ? '#fff' : '#8e8e93' }}>
               {label}
             </button>
           ))}
@@ -2300,18 +2304,34 @@ function milesFromHome(coord) {
   const a = Math.sin(dLa / 2) ** 2 + Math.cos(toR(la1)) * Math.cos(toR(la2)) * Math.sin(dLo / 2) ** 2;
   return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
+// Estimated drive time range from straight-line miles (SoCal roads add ~30%).
+// Fast = light traffic (~55mph effective), slow = rush hour (~28mph effective).
+function driveTimeRange(miles) {
+  if (miles == null) return null;
+  const roadMi = miles * 1.3;
+  const fast = Math.max(5, Math.round(roadMi / 55 * 60));
+  const slow = Math.max(8, Math.round(roadMi / 28 * 60));
+  const fmt = (m) => m >= 60 ? (Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '')) : (m + ' min');
+  return { fast: fmt(fast), slow: fmt(slow), fastMin: fast, slowMin: slow };
+}
 
 function MapView({ people, onClose, onOpen }) {
   const mapRef = React.useRef(null);
   const [selected, setSelected] = React.useState(null);
+  const [filter, setFilter] = React.useState('all'); // all | active | planning | dateset | hold | bench | inner
 
-  // people who are not archived/deleted and have a known city
-  const pool = people
+  const BUCKETS = [
+    ['all', 'All'], ['active', 'Active'], ['planning', 'Planning'], ['dateset', 'Date set'],
+    ['hold', 'Hold'], ['bench', 'Bench'], ['inner', 'Inner'],
+  ];
+
+  // EVERYONE (except archived), matching the filter. Attach coord + miles + drive time.
+  const all = people
     .filter(p => (p.bucket || 'active') !== 'deleted')
-    .map(p => ({ p, coord: cityCoord(p.facts && p.facts.livesIn) }))
-    .filter(x => x.coord)
-    .map(x => ({ ...x, miles: milesFromHome(x.coord) }))
-    .sort((a, b) => (a.miles || 0) - (b.miles || 0)); // shortest first
+    .filter(p => filter === 'all' ? true : (p.bucket || 'active') === filter)
+    .map(p => { const coord = cityCoord(p.facts && p.facts.livesIn); const miles = milesFromHome(coord); return { p, coord, miles, drive: driveTimeRange(miles) }; });
+  const pool = all.filter(x => x.coord).sort((a, b) => (a.miles || 0) - (b.miles || 0)); // on the map
+  const noLoc = all.filter(x => !x.coord); // no recognized city
 
   React.useEffect(() => {
     let cleanup = () => {};
@@ -2334,26 +2354,27 @@ function MapView({ people, onClose, onOpen }) {
       // home marker
       L.circleMarker(HOME, { radius: 9, color: '#fff', fillColor: '#0A84FF', fillOpacity: 1, weight: 3 })
         .addTo(map).bindTooltip('You — Balboa Island', { permanent: false });
-      // person markers — photo pins
-      pool.forEach(({ p, coord, miles }) => {
+      // person markers — photo pins with NAME + drive time label
+      pool.forEach(({ p, coord, miles, drive }) => {
         const tier = TIERS[p.tier] || TIERS[1];
         const photo = nonChatPhotos(p)[0];
         const inner = photo
           ? '<img src="' + photo + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%">'
           : '<div style="width:100%;height:100%;border-radius:50%;background:#2c2c2e;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px">' + ((p.name || '?')[0].toUpperCase()) + '</div>';
-        const html = '<div style="width:44px;height:44px;border-radius:50%;border:3px solid ' + tier.color + ';box-shadow:0 2px 6px rgba(0,0,0,.5);overflow:hidden;background:#000">' + inner + '</div>';
-        const icon = L.divIcon({ html: html, className: 'photo-pin', iconSize: [44, 44], iconAnchor: [22, 22] });
+        const label = '<div style="margin-top:2px;font:700 11px -apple-system;color:#fff;text-shadow:0 1px 3px #000;white-space:nowrap;text-align:center">' + (p.name || '—') + (drive ? ' · ' + drive.fast : '') + '</div>';
+        const html = '<div style="display:flex;flex-direction:column;align-items:center"><div style="width:46px;height:46px;border-radius:50%;border:3px solid ' + tier.color + ';box-shadow:0 2px 6px rgba(0,0,0,.6);overflow:hidden;background:#000">' + inner + '</div>' + label + '</div>';
+        const icon = L.divIcon({ html: html, className: 'photo-pin', iconSize: [80, 66], iconAnchor: [40, 23] });
         const m = L.marker(coord, { icon: icon }).addTo(map);
-        m.on('click', () => setSelected({ p, miles }));
+        m.on('click', () => setSelected({ p, miles, drive }));
       });
       if (pool.length) {
         const bounds = L.latLngBounds([HOME, ...pool.map(x => x.coord)]);
-        map.fitBounds(bounds.pad(0.2));
+        map.fitBounds(bounds.pad(0.25));
       }
       cleanup = () => { try { map.remove(); } catch (e) {} };
     })();
     return () => cleanup();
-  }, []);
+  }, [filter]);
 
   return (
     <div style={S.mapOverlay}>
@@ -2361,6 +2382,13 @@ function MapView({ people, onClose, onOpen }) {
         <span style={S.mapTitle}>🗺️ Map — from Balboa Island</span>
         <button style={S.mapClose} onClick={onClose}>Close</button>
       </div>
+
+      <div style={S.mapFilters}>
+        {BUCKETS.map(([key, label]) => (
+          <button key={key} style={{ ...S.mapFilterChip, ...(filter === key ? S.mapFilterChipOn : {}) }} onClick={() => setFilter(key)}>{label}</button>
+        ))}
+      </div>
+
       <div ref={mapRef} style={S.mapCanvas}></div>
 
       {selected ? (
@@ -2371,7 +2399,7 @@ function MapView({ people, onClose, onOpen }) {
           <div style={S.mapCardMid}>
             <div style={S.mapCardName}>{selected.p.name || '—'}{selected.p.facts && selected.p.facts.age ? ', ' + selected.p.facts.age : ''}</div>
             <div style={S.mapCardMeta}>{(selected.p.facts && selected.p.facts.livesIn) || ''}{selected.p.app ? ' · ' + selected.p.app : ''}</div>
-            <div style={S.mapCardMiles}>🚗 ~{selected.miles} mi from you · tap to open</div>
+            <div style={S.mapCardMiles}>🚗 ~{selected.miles} mi · {selected.drive ? selected.drive.fast + '–' + selected.drive.slow : ''} drive · tap to open</div>
           </div>
           <button style={S.mapCardX} onClick={(e) => { e.stopPropagation(); setSelected(null); }}>×</button>
         </div>
@@ -2379,18 +2407,35 @@ function MapView({ people, onClose, onOpen }) {
 
       <div style={S.mapList}>
         <div style={S.mapListTitle}>Sorted by distance (closest first)</div>
-        {pool.map(({ p, miles }) => {
+        {pool.map(({ p, miles, drive }) => {
           const tier = TIERS[p.tier] || TIERS[1];
           return (
             <div key={p.id} style={S.mapListRow} onClick={() => onOpen(p.id)}>
-              <span style={{ ...S.mapDot, background: tier.color }} />
-              <span style={S.mapListName}>{p.name || '—'}</span>
-              <span style={S.mapListCity}>{(p.facts && p.facts.livesIn) || ''}</span>
+              {nonChatPhotos(p)[0] ? <img src={nonChatPhotos(p)[0]} style={{ ...S.mapListImg, borderColor: tier.color }} alt="" /> : <div style={{ ...S.mapListImgBlank, borderColor: tier.color }}>{(p.name || '?')[0].toUpperCase()}</div>}
+              <div style={S.mapListMid}>
+                <div style={S.mapListName}>{p.name || '—'} <span style={S.mapListCity}>{(p.facts && p.facts.livesIn) || ''}</span></div>
+                <div style={S.mapListDrive}>🚗 {drive ? drive.fast + '–' + drive.slow : ''}</div>
+              </div>
               <span style={S.mapListMiles}>~{miles} mi</span>
             </div>
           );
         })}
-        {pool.length === 0 ? <div style={S.mapEmpty}>No one has a recognized city yet. Add a city under a prospect's "Lives in" to see them on the map.</div> : null}
+        {pool.length === 0 ? <div style={S.mapEmpty}>No one in this filter has a recognized city. They still show below if they have no location.</div> : null}
+
+        {noLoc.length ? (
+          <>
+            <div style={S.mapListTitle}>No location set</div>
+            {noLoc.map(({ p }) => (
+              <div key={p.id} style={S.mapListRow} onClick={() => onOpen(p.id)}>
+                {nonChatPhotos(p)[0] ? <img src={nonChatPhotos(p)[0]} style={S.mapListImg} alt="" /> : <div style={S.mapListImgBlank}>{(p.name || '?')[0].toUpperCase()}</div>}
+                <div style={S.mapListMid}>
+                  <div style={S.mapListName}>{p.name || '—'}</div>
+                  <div style={S.mapListDrive}>Add a city under "Lives in" to place them</div>
+                </div>
+              </div>
+            ))}
+          </>
+        ) : null}
       </div>
     </div>
   );
@@ -2908,6 +2953,13 @@ const S = {
   mapListCity: { fontSize: 13, color: '#8e8e93', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   mapListMiles: { fontSize: 14, fontWeight: 800, color: '#12b76a' },
   mapEmpty: { color: '#8e8e93', fontSize: 13.5, textAlign: 'center', padding: 30, lineHeight: 1.5 },
+  mapFilters: { display: 'flex', gap: 6, padding: '10px 12px', overflowX: 'auto', borderBottom: '0.5px solid #2c2c2e' },
+  mapFilterChip: { flexShrink: 0, background: '#1c1c1e', color: '#8e8e93', border: '1px solid #2c2c2e', borderRadius: 9, padding: '7px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+  mapFilterChipOn: { background: '#12b76a', color: '#fff', borderColor: '#12b76a' },
+  mapListImg: { width: 44, height: 44, borderRadius: 22, objectFit: 'cover', border: '2px solid #3a3a3c', flexShrink: 0 },
+  mapListImgBlank: { width: 44, height: 44, borderRadius: 22, background: '#2c2c2e', border: '2px solid #3a3a3c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, fontWeight: 700, color: '#8e8e93', flexShrink: 0 },
+  mapListMid: { flex: 1, minWidth: 0 },
+  mapListDrive: { fontSize: 12.5, color: '#12b76a', fontWeight: 700, marginTop: 2 },
   coachSheet: { width: '100%', maxWidth: 480, maxHeight: '92%', overflowY: 'auto', background: '#000', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, boxSizing: 'border-box', border: '0.5px solid #2c2c2e' },
   coachTitle: { fontSize: 24, fontWeight: 900, textAlign: 'center', marginBottom: 6 },
   coachSection: { fontSize: 13, fontWeight: 800, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 22, marginBottom: 10 },
