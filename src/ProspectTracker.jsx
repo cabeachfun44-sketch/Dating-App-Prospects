@@ -1,4 +1,4 @@
-// ==================== VERSION 27 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 28 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sget, sset, sdel, storageMode as cloudStorageMode, sgetAllPersons } from './storage.js';
 
@@ -759,7 +759,7 @@ export default function ProspectTracker() {
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v27</span></div>
+        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v28</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
@@ -2292,8 +2292,32 @@ function cityCoord(city) {
   if (!city) return null;
   const key = String(city).toLowerCase().trim().replace(/,.*$/, '').trim();
   if (CITY_COORDS[key]) return CITY_COORDS[key];
-  // try partial match
   for (const k in CITY_COORDS) { if (key.includes(k) || k.includes(key)) return CITY_COORDS[k]; }
+  return null;
+}
+
+// Look up ANY city's coordinates automatically (free OpenStreetMap Nominatim, no key).
+// Results are cached in storage so each city is only looked up once.
+const GEO_CACHE_KEY = 'geo_cache';
+let _geoCache = null;
+async function geocodeCity(city) {
+  if (!city) return null;
+  const known = cityCoord(city);
+  if (known) return known;
+  const key = String(city).toLowerCase().trim();
+  if (_geoCache == null) { try { _geoCache = (await sget(GEO_CACHE_KEY)) || {}; } catch (e) { _geoCache = {}; } }
+  if (_geoCache[key]) return _geoCache[key];
+  try {
+    const q = encodeURIComponent(city + (/(,|california|ca\b)/i.test(city) ? '' : ', California, USA'));
+    const resp = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + q, { headers: { 'Accept': 'application/json' } });
+    const data = await resp.json();
+    if (data && data[0]) {
+      const coord = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+      _geoCache[key] = coord;
+      try { await sset(GEO_CACHE_KEY, _geoCache); } catch (e) {}
+      return coord;
+    }
+  } catch (e) {}
   return null;
 }
 function milesFromHome(coord) {
@@ -2325,13 +2349,32 @@ function MapView({ people, onClose, onOpen }) {
     ['hold', 'Hold'], ['bench', 'Bench'], ['inner', 'Inner'],
   ];
 
+  const [coords, setCoords] = React.useState({}); // id -> [lat,lng]
+  const [geoDone, setGeoDone] = React.useState(false);
+
+  // Auto-geocode every prospect's city (uses free lookup + cache) on open.
+  React.useEffect(() => {
+    (async () => {
+      const active = people.filter(p => (p.bucket || 'active') !== 'deleted');
+      const found = {};
+      for (const p of active) {
+        const city = p.facts && p.facts.livesIn;
+        if (!city) continue;
+        const c = cityCoord(city);
+        if (c) { found[p.id] = c; continue; }
+        try { const g = await geocodeCity(city); if (g) found[p.id] = g; } catch (e) {}
+      }
+      setCoords(found); setGeoDone(true);
+    })();
+  }, []);
+
   // EVERYONE (except archived), matching the filter. Attach coord + miles + drive time.
   const all = people
     .filter(p => (p.bucket || 'active') !== 'deleted')
     .filter(p => filter === 'all' ? true : (p.bucket || 'active') === filter)
-    .map(p => { const coord = cityCoord(p.facts && p.facts.livesIn); const miles = milesFromHome(coord); return { p, coord, miles, drive: driveTimeRange(miles) }; });
+    .map(p => { const coord = coords[p.id] || cityCoord(p.facts && p.facts.livesIn); const miles = milesFromHome(coord); return { p, coord, miles, drive: driveTimeRange(miles) }; });
   const pool = all.filter(x => x.coord).sort((a, b) => (a.miles || 0) - (b.miles || 0)); // on the map
-  const noLoc = all.filter(x => !x.coord); // no recognized city
+  const noLoc = all.filter(x => !x.coord); // no city on file at all
 
   React.useEffect(() => {
     let cleanup = () => {};
@@ -2374,7 +2417,7 @@ function MapView({ people, onClose, onOpen }) {
       cleanup = () => { try { map.remove(); } catch (e) {} };
     })();
     return () => cleanup();
-  }, [filter]);
+  }, [filter, geoDone]);
 
   return (
     <div style={S.mapOverlay}>
@@ -2406,6 +2449,7 @@ function MapView({ people, onClose, onOpen }) {
       ) : null}
 
       <div style={S.mapList}>
+        {!geoDone ? <div style={S.mapListTitle}>📍 Locating everyone…</div> : null}
         <div style={S.mapListTitle}>Sorted by distance (closest first)</div>
         {pool.map(({ p, miles, drive }) => {
           const tier = TIERS[p.tier] || TIERS[1];
