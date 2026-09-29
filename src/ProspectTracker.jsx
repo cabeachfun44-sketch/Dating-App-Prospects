@@ -1,4 +1,4 @@
-// ==================== VERSION 23 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
+// ==================== VERSION 25 ====================  ← CHECK THIS MATCHES BEFORE YOU COMMIT
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sget, sset, sdel, storageMode as cloudStorageMode, sgetAllPersons } from './storage.js';
 
@@ -437,6 +437,7 @@ export default function ProspectTracker() {
   const [filterTier, setFilterTier] = useState(null); // null = all, 0/1/2
   const [view, setView] = useState('all'); // all | active | planning | followups | hold | deleted
   const [showPyramid, setShowPyramid] = useState(false);
+  const [showMap, setShowMap] = useState(false);
   const [sortBy, setSortBy] = useState('age'); // default sort by age
   const [isPro, setIsPro] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
@@ -756,7 +757,7 @@ export default function ProspectTracker() {
   return (
     <div style={S.screen}>
       <div style={S.header}>
-        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v23</span></div>
+        <div style={S.title}>Options <span style={{ fontSize: 11, color: '#5E5CE6', fontWeight: 700, verticalAlign: 'middle' }}>v25</span></div>
         <div style={S.headerRight}>
           <button style={hasPrefs ? S.typeBtnSaved : S.wrappedBtn} onClick={() => setShowPrefs(true)}>🎯 My type{hasPrefs ? ' ✓' : ''}</button>
           {people.length > 0 && <button style={S.wrappedBtn} onClick={() => setShowCoach(true)}>🧠 Coach</button>}
@@ -790,6 +791,7 @@ export default function ProspectTracker() {
           <button style={{ ...S.viewTab, ...(view === 'bench' ? { background: '#E67E22', color: '#fff', borderColor: '#E67E22' } : {}) }} onClick={() => setView('bench')}>🪑 Bench{benchCount > 0 ? ' (' + benchCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, ...(view === 'deleted' ? S.viewTabOn : {}) }} onClick={() => setView('deleted')}>Archive{deletedCount > 0 ? ' (' + deletedCount + ')' : ''}</button>
           <button style={{ ...S.viewTab, background: '#5E5CE6', color: '#fff', borderColor: '#5E5CE6' }} onClick={() => setShowPyramid(true)}>🔺 Pyramid</button>
+          <button style={{ ...S.viewTab, background: '#12b76a', color: '#fff', borderColor: '#12b76a' }} onClick={() => setShowMap(true)}>🗺️ Map</button>
         </div>
       )}
 
@@ -891,6 +893,7 @@ export default function ProspectTracker() {
       {showWrapped && <Wrapped people={people} onClose={() => setShowWrapped(false)} />}
       {showCoach && <Coach people={people} onClose={() => setShowCoach(false)} onOpen={(id) => { setShowCoach(false); setOpenId(id); }} />}
       {showPyramid && <Pyramid people={people} onClose={() => setShowPyramid(false)} onOpen={(id) => { setShowPyramid(false); setOpenId(id); }} onReorder={reorderByIds} />}
+      {showMap && <MapView people={people} onClose={() => setShowMap(false)} onOpen={(id) => { setShowMap(false); setOpenId(id); }} />}
       {showPrefs && <PrefsModal onClose={() => setShowPrefs(false)} onSaved={(d) => setHasPrefs(!!(d && d.trim()))} />}
       {whyMatch && <WhyMatch person={whyMatch} onClose={() => setWhyMatch(null)} />}
     </div>
@@ -1459,17 +1462,8 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
           onChange={e => onUpdate(p.id, { followUpNote: e.target.value })} />
         {p.followUpDate ? (
           <button style={S.readBtn} onClick={() => {
-            const dt = (p.followUpDate || '').replace(/-/g, '');
-            const title = 'Reconnect with ' + (p.name || 'prospect');
-            const desc = (p.followUpNote || '').replace(/\n/g, ' ');
-            const ics = ['BEGIN:VCALENDAR','VERSION:2.0','BEGIN:VEVENT',
-              'DTSTART;VALUE=DATE:' + dt, 'SUMMARY:' + title, 'DESCRIPTION:' + desc,
-              'END:VEVENT','END:VCALENDAR'].join('\r\n');
-            const blob = new Blob([ics], { type: 'text/calendar' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = 'reconnect.ics'; a.click();
-            setTimeout(() => URL.revokeObjectURL(url), 4000);
-          }}>📅 Add reminder to my calendar</button>
+            addToCalendar('🔔 Reconnect with ' + (p.name || 'them'), p.followUpDate, p.followUpNote || '', '');
+          }}>📅 Add reconnect reminder to calendar</button>
         ) : null}
         <div style={{ height: 14 }} />
 
@@ -1590,13 +1584,20 @@ function Detail({ person, onBack, onUpdate, onRemove, isPro, onNeedPro, onHowto,
         <div style={S.fieldLabel}>📅 Dates</div>
         <div style={S.dateLog}>
           {(p.dates || []).map((d, i) => (
-            <div key={i} style={S.dateCard} onClick={() => setEditingDate(i)}>
-              <div style={S.dateCardTop}>
+            <div key={i} style={S.dateCard}>
+              <div style={S.dateCardTop} onClick={() => setEditingDate(i)}>
                 <span style={S.dateWhen}>{d.when || 'Date ' + (i + 1)}</span>
                 {d.score ? <span style={{ ...S.dateScore, background: scoreColor(d.score) }}>{d.score}/10</span> : null}
               </div>
-              {d.place ? <div style={S.datePlace}>📍 {d.place}</div> : null}
-              {d.howItWent ? <div style={S.dateHow}>{d.howItWent}</div> : null}
+              {d.place ? <div style={S.datePlace} onClick={() => setEditingDate(i)}>📍 {d.place}</div> : null}
+              {d.howItWent ? <div style={S.dateHow} onClick={() => setEditingDate(i)}>{d.howItWent}</div> : null}
+              <button style={S.dateCalBtn} onClick={(e) => {
+                e.stopPropagation();
+                let when = d.when || '';
+                const parsed = Date.parse(when);
+                const dateStr = isNaN(parsed) ? new Date().toISOString().slice(0, 10) : new Date(parsed).toISOString().slice(0, 10);
+                addToCalendar('Date with ' + (p.name || 'them') + (d.place ? ' — ' + d.place : ''), dateStr, d.nextIdea || d.howItWent || '', d.place || '');
+              }}>📅 Add this date to calendar</button>
             </div>
           ))}
           <button style={S.dateAdd} onClick={() => setEditingDate('new')}>+ Log a date</button>
@@ -1827,6 +1828,43 @@ function applyRead(p, r) {
 }
 
 // Her photos with any chat screenshots removed — the ONLY photos safe to share.
+// Build & open a calendar event (.ics) — works with Fantastical, Apple & Google Calendar.
+// dateStr = 'YYYY-MM-DD' (all-day) or a full ISO datetime. Includes 1-day & 2-hour alerts.
+function addToCalendar(title, dateStr, notes, location) {
+  try {
+    const clean = (s) => String(s || '').replace(/\r?\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+    let dtLine, allDay = false;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      allDay = true;
+      dtLine = 'DTSTART;VALUE=DATE:' + dateStr.replace(/-/g, '');
+    } else {
+      const d = new Date(dateStr);
+      const z = (n) => String(n).padStart(2, '0');
+      const stamp = d.getUTCFullYear() + z(d.getUTCMonth() + 1) + z(d.getUTCDate()) + 'T' + z(d.getUTCHours()) + z(d.getUTCMinutes()) + '00Z';
+      dtLine = 'DTSTART:' + stamp;
+    }
+    const uid = 'opt-' + Date.now() + '@options';
+    const lines = [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Options//EN', 'CALSCALE:GREGORIAN',
+      'BEGIN:VEVENT', 'UID:' + uid, dtLine,
+      'SUMMARY:' + clean(title),
+      notes ? 'DESCRIPTION:' + clean(notes) : '',
+      location ? 'LOCATION:' + clean(location) : '',
+      // reminder 1 day before
+      'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + clean(title), 'TRIGGER:-P1D', 'END:VALARM',
+      // reminder 2 hours before (only meaningful for timed events, harmless otherwise)
+      'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + clean(title), 'TRIGGER:-PT2H', 'END:VALARM',
+      'END:VEVENT', 'END:VCALENDAR',
+    ].filter(Boolean).join('\r\n');
+    const blob = new Blob([lines], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = (title || 'event').replace(/[^a-z0-9]/gi, '_') + '.ics';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } catch (e) {}
+}
+
 function nonChatPhotos(p) {
   const chat = new Set(p.chatPhotos || []);
   return (p.photos || []).filter(src => !chat.has(src));
@@ -2214,6 +2252,139 @@ function PrefsModal({ onClose, onSaved }) {
         <div style={S.prefsCount}>{desc.trim() ? desc.trim().length + ' characters saved to your profile' : 'Nothing saved yet'}</div>
         <button style={S.sheetSave} onClick={save}>{savedMsg ? '✓ Saved' : 'Save my type'}</button>
         <button style={S.sheetCancel} onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+// City → [lat, lng] for plotting. Covers common SoCal + CA cities; extend as needed.
+const CITY_COORDS = {
+  'balboa island': [33.6061, -117.8977], 'newport beach': [33.6189, -117.9298],
+  'huntington beach': [33.6595, -117.9988], 'costa mesa': [33.6411, -117.9187],
+  'irvine': [33.6846, -117.8265], 'laguna beach': [33.5427, -117.7854],
+  'santa ana': [33.7455, -117.8677], 'anaheim': [33.8366, -117.9143],
+  'long beach': [33.7701, -118.1937], 'los angeles': [34.0522, -118.2437],
+  'beverly hills': [34.0736, -118.4004], 'santa monica': [34.0195, -118.4912],
+  'manhattan beach': [33.8847, -118.4109], 'hermosa beach': [33.8622, -118.3995],
+  'redondo beach': [33.8492, -118.3884], 'rancho palos verdes': [33.7445, -118.3870],
+  'marina del rey': [33.9802, -118.4517], 'venice': [33.9850, -118.4695],
+  'pasadena': [34.1478, -118.1445], 'burbank': [34.1808, -118.3090],
+  'glendale': [34.1425, -118.2551], 'san diego': [32.7157, -117.1611],
+  'la jolla': [32.8328, -117.2713], 'oceanside': [33.1959, -117.3795],
+  'carlsbad': [33.1581, -117.3506], 'encinitas': [33.0370, -117.2920],
+  'dana point': [33.4672, -117.6981], 'san clemente': [33.4270, -117.6120],
+  'mission viejo': [33.6000, -117.6720], 'lake forest': [33.6469, -117.6892],
+  'fullerton': [33.8704, -117.9242], 'orange': [33.7879, -117.8531],
+  'tustin': [33.7458, -117.8261], 'fountain valley': [33.7092, -117.9536],
+  'seal beach': [33.7414, -118.1048], 'sunset beach': [33.7169, -118.0703],
+  'west hollywood': [34.0900, -118.3617], 'culver city': [34.0211, -118.3965],
+  'torrance': [33.8358, -118.3406], 'san francisco': [37.7749, -122.4194],
+  'sacramento': [38.5816, -121.4944], 'palm springs': [33.8303, -116.5453],
+  'temecula': [33.4936, -117.1484], 'riverside': [33.9806, -117.3755],
+};
+const HOME = [33.6061, -117.8977]; // Balboa Island
+
+function cityCoord(city) {
+  if (!city) return null;
+  const key = String(city).toLowerCase().trim().replace(/,.*$/, '').trim();
+  if (CITY_COORDS[key]) return CITY_COORDS[key];
+  // try partial match
+  for (const k in CITY_COORDS) { if (key.includes(k) || k.includes(key)) return CITY_COORDS[k]; }
+  return null;
+}
+function milesFromHome(coord) {
+  if (!coord) return null;
+  const [la1, lo1] = HOME, [la2, lo2] = coord;
+  const R = 3959, toR = (d) => d * Math.PI / 180;
+  const dLa = toR(la2 - la1), dLo = toR(lo2 - lo1);
+  const a = Math.sin(dLa / 2) ** 2 + Math.cos(toR(la1)) * Math.cos(toR(la2)) * Math.sin(dLo / 2) ** 2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function MapView({ people, onClose, onOpen }) {
+  const mapRef = React.useRef(null);
+  const [selected, setSelected] = React.useState(null);
+
+  // people who are not archived/deleted and have a known city
+  const pool = people
+    .filter(p => (p.bucket || 'active') !== 'deleted')
+    .map(p => ({ p, coord: cityCoord(p.facts && p.facts.livesIn) }))
+    .filter(x => x.coord)
+    .map(x => ({ ...x, miles: milesFromHome(x.coord) }))
+    .sort((a, b) => (a.miles || 0) - (b.miles || 0)); // shortest first
+
+  React.useEffect(() => {
+    let cleanup = () => {};
+    (async () => {
+      // load Leaflet from CDN if not present
+      if (!window.L) {
+        await new Promise((res) => {
+          const css = document.createElement('link'); css.rel = 'stylesheet';
+          css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; document.head.appendChild(css);
+          const s = document.createElement('script'); s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+          s.onload = res; s.onerror = res; document.head.appendChild(s);
+        });
+      }
+      if (!window.L || !mapRef.current) return;
+      const L = window.L;
+      const map = L.map(mapRef.current, { zoomControl: true }).setView(HOME, 10);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19,
+      }).addTo(map);
+      // home marker
+      L.circleMarker(HOME, { radius: 9, color: '#fff', fillColor: '#0A84FF', fillOpacity: 1, weight: 3 })
+        .addTo(map).bindTooltip('You — Balboa Island', { permanent: false });
+      // person markers
+      pool.forEach(({ p, coord, miles }) => {
+        const tier = TIERS[p.tier] || TIERS[1];
+        const m = L.circleMarker(coord, { radius: 11, color: '#fff', fillColor: tier.color, fillOpacity: 0.95, weight: 2 }).addTo(map);
+        m.on('click', () => setSelected({ p, miles }));
+      });
+      if (pool.length) {
+        const bounds = L.latLngBounds([HOME, ...pool.map(x => x.coord)]);
+        map.fitBounds(bounds.pad(0.2));
+      }
+      cleanup = () => { try { map.remove(); } catch (e) {} };
+    })();
+    return () => cleanup();
+  }, []);
+
+  return (
+    <div style={S.mapOverlay}>
+      <div style={S.mapHeader}>
+        <span style={S.mapTitle}>🗺️ Map — from Balboa Island</span>
+        <button style={S.mapClose} onClick={onClose}>Close</button>
+      </div>
+      <div ref={mapRef} style={S.mapCanvas}></div>
+
+      {selected ? (
+        <div style={S.mapCard} onClick={() => onOpen(selected.p.id)}>
+          {nonChatPhotos(selected.p)[0]
+            ? <img src={nonChatPhotos(selected.p)[0]} style={S.mapCardImg} alt="" />
+            : <div style={S.mapCardBlank}>{(selected.p.name || '?')[0].toUpperCase()}</div>}
+          <div style={S.mapCardMid}>
+            <div style={S.mapCardName}>{selected.p.name || '—'}{selected.p.facts && selected.p.facts.age ? ', ' + selected.p.facts.age : ''}</div>
+            <div style={S.mapCardMeta}>{(selected.p.facts && selected.p.facts.livesIn) || ''}{selected.p.app ? ' · ' + selected.p.app : ''}</div>
+            <div style={S.mapCardMiles}>🚗 ~{selected.miles} mi from you · tap to open</div>
+          </div>
+          <button style={S.mapCardX} onClick={(e) => { e.stopPropagation(); setSelected(null); }}>×</button>
+        </div>
+      ) : null}
+
+      <div style={S.mapList}>
+        <div style={S.mapListTitle}>Sorted by distance (closest first)</div>
+        {pool.map(({ p, miles }) => {
+          const tier = TIERS[p.tier] || TIERS[1];
+          return (
+            <div key={p.id} style={S.mapListRow} onClick={() => onOpen(p.id)}>
+              <span style={{ ...S.mapDot, background: tier.color }} />
+              <span style={S.mapListName}>{p.name || '—'}</span>
+              <span style={S.mapListCity}>{(p.facts && p.facts.livesIn) || ''}</span>
+              <span style={S.mapListMiles}>~{miles} mi</span>
+            </div>
+          );
+        })}
+        {pool.length === 0 ? <div style={S.mapEmpty}>No one has a recognized city yet. Add a city under a prospect's "Lives in" to see them on the map.</div> : null}
       </div>
     </div>
   );
@@ -2696,6 +2867,7 @@ const S = {
   datePlace: { fontSize: 13, color: '#c7c7cc', marginTop: 4 },
   dateHow: { fontSize: 13, color: '#8e8e93', marginTop: 4, lineHeight: 1.4 },
   dateAdd: { width: '100%', background: '#1c1c1e', border: '1.5px dashed #3a3a3c', color: '#0A84FF', borderRadius: 10, padding: '11px', fontSize: 14, fontWeight: 700, cursor: 'pointer' },
+  dateCalBtn: { marginTop: 8, background: 'rgba(10,132,255,0.12)', border: '1px solid rgba(10,132,255,0.3)', color: '#0A84FF', borderRadius: 8, padding: '7px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' },
 
   ideasBtn: { width: '100%', background: 'linear-gradient(135deg,#0A84FF,#5E5CE6)', color: '#fff', border: 'none', borderRadius: 12, padding: '14px', fontSize: 15, fontWeight: 800, cursor: 'pointer', marginBottom: 12 },
   ideasBox: { background: '#1c1c1e', borderRadius: 14, padding: 14, marginBottom: 18 },
@@ -2709,6 +2881,27 @@ const S = {
 
   sheetOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 },
   pyramidSheet: { width: '100%', maxWidth: 480, maxHeight: '92%', overflowY: 'auto', background: '#000', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, boxSizing: 'border-box', border: '0.5px solid #2c2c2e' },
+  mapOverlay: { position: 'fixed', inset: 0, background: '#000', zIndex: 1000, display: 'flex', flexDirection: 'column', maxWidth: 480, margin: '0 auto' },
+  mapHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '0.5px solid #2c2c2e' },
+  mapTitle: { fontSize: 17, fontWeight: 800 },
+  mapClose: { background: 'none', border: 'none', color: '#0A84FF', fontSize: 16, fontWeight: 700, cursor: 'pointer' },
+  mapCanvas: { flex: '0 0 46%', width: '100%', background: '#111' },
+  mapCard: { display: 'flex', alignItems: 'center', gap: 12, background: '#1c1c1e', margin: '10px 12px', borderRadius: 14, padding: 12, cursor: 'pointer', position: 'relative' },
+  mapCardImg: { width: 56, height: 56, borderRadius: 10, objectFit: 'cover', flexShrink: 0 },
+  mapCardBlank: { width: 56, height: 56, borderRadius: 10, background: '#2c2c2e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, color: '#8e8e93', flexShrink: 0 },
+  mapCardMid: { flex: 1, minWidth: 0 },
+  mapCardName: { fontSize: 17, fontWeight: 800 },
+  mapCardMeta: { fontSize: 13, color: '#c7c7cc', marginTop: 2 },
+  mapCardMiles: { fontSize: 12.5, color: '#12b76a', fontWeight: 700, marginTop: 3 },
+  mapCardX: { position: 'absolute', top: 8, right: 10, background: 'none', border: 'none', color: '#8e8e93', fontSize: 20, cursor: 'pointer' },
+  mapList: { flex: 1, overflowY: 'auto', padding: '4px 12px 24px' },
+  mapListTitle: { fontSize: 12, color: '#8e8e93', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, margin: '8px 4px' },
+  mapListRow: { display: 'flex', alignItems: 'center', gap: 10, background: '#141416', borderRadius: 10, padding: '11px 12px', marginBottom: 7, cursor: 'pointer' },
+  mapDot: { width: 12, height: 12, borderRadius: 6, flexShrink: 0 },
+  mapListName: { fontSize: 15, fontWeight: 700, flex: '0 0 auto' },
+  mapListCity: { fontSize: 13, color: '#8e8e93', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  mapListMiles: { fontSize: 14, fontWeight: 800, color: '#12b76a' },
+  mapEmpty: { color: '#8e8e93', fontSize: 13.5, textAlign: 'center', padding: 30, lineHeight: 1.5 },
   coachSheet: { width: '100%', maxWidth: 480, maxHeight: '92%', overflowY: 'auto', background: '#000', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, boxSizing: 'border-box', border: '0.5px solid #2c2c2e' },
   coachTitle: { fontSize: 24, fontWeight: 900, textAlign: 'center', marginBottom: 6 },
   coachSection: { fontSize: 13, fontWeight: 800, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 22, marginBottom: 10 },
